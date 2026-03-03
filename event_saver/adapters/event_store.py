@@ -30,6 +30,7 @@ class SqlEventStore(IEventStore):
                     booking_id,
                     event_type,
                     source,
+                    hash,
                     occurred_at,
                     payload
                 ) values (
@@ -37,10 +38,11 @@ class SqlEventStore(IEventStore):
                     :booking_id,
                     :event_type,
                     :source,
+                    md5(cast(:payload as jsonb)::text),
                     :occurred_at,
                     cast(:payload as jsonb)
                 )
-                on conflict (event_id) do nothing
+                on conflict (booking_id, event_type, source, hash) do nothing
                 """,
                 {
                     "event_id": event_id,
