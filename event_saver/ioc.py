@@ -5,8 +5,16 @@ from dishka import Provider, Scope, provide
 from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, fastapi
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from event_saver.adapters import CloudEventPublisher, RabbitTopologyManager
+from event_saver.adapters import (
+    CloudEventPublisher,
+    RabbitEventConsumerRunner,
+    RabbitTopologyManager,
+    SqlEventStore,
+    SqlExecutor,
+)
 from event_saver.config import Settings
+from event_saver.interfaces.consumer import IEventConsumerRunner
+from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.publisher import ICloudEventPublisher, ITopologyManager
 from event_saver.interfaces.routing import IEventRouter
 from event_saver.interfaces.sql import ISqlExecutor
@@ -32,7 +40,7 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_faststream_router(self, settings: Settings) -> fastapi.RabbitRouter:
         logger.info("Creating FastStream RabbitRouter", rabbit_url=settings.rabbit_url)
-        return fastapi.RabbitRouter(settings.rabbit_url)
+        return fastapi.RabbitRouter(str(settings.rabbit_url))
 
     @provide(scope=Scope.APP)
     def provide_broker(self, router: fastapi.RabbitRouter) -> RabbitBroker:
@@ -85,7 +93,7 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     async def provide_db_engine(self, settings: Settings) -> AsyncGenerator[AsyncEngine, Any]:
         engine = create_async_engine(
-            settings.postgres_dsn,
+            str(settings.postgres_dsn),
             pool_size=10,
             max_overflow=20,
             pool_pre_ping=True,
@@ -114,3 +122,25 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def provide_sql_executor(self, session: AsyncSession) -> ISqlExecutor:
         return SqlExecutor(session)
+
+    @provide(scope=Scope.APP)
+    def provide_event_store(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+    ) -> IEventStore:
+        return SqlEventStore(sessionmaker)
+
+    @provide(scope=Scope.APP)
+    def provide_event_consumer_runner(
+        self,
+        settings: Settings,
+        broker: RabbitBroker,
+        exchange: RabbitExchange,
+        event_store: IEventStore,
+    ) -> IEventConsumerRunner:
+        return RabbitEventConsumerRunner(
+            broker=broker,
+            exchange=exchange,
+            queue_names=settings.topology_queues,
+            event_store=event_store,
+        )
