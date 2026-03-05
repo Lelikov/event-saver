@@ -1,4 +1,4 @@
-from pydantic import AmqpDsn, Field, PostgresDsn
+from pydantic import AmqpDsn, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from event_saver.routing import RouteRule, RoutingConfig
@@ -29,6 +29,17 @@ class Settings(BaseSettings):
 
     debug: bool = False
     log_level: str = "INFO"
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        upper = v.upper()
+        if upper not in valid_levels:
+            raise ValueError(
+                f"Invalid log_level: {v!r}. Must be one of {sorted(valid_levels)}",
+            )
+        return upper
 
     rabbit_url: AmqpDsn = "amqp://guest:guest@localhost:5672/"
     rabbit_exchange: str = "events"

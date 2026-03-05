@@ -15,7 +15,10 @@ class RouteRule(BaseModel):
     type_pattern: str = Field(default="*", description="CloudEvent type glob")
 
     def matches(self, source: str, event_type: str) -> bool:
-        return fnmatch.fnmatch(source, self.source_pattern) and fnmatch.fnmatch(event_type, self.type_pattern)
+        return fnmatch.fnmatch(source, self.source_pattern) and fnmatch.fnmatch(
+            event_type,
+            self.type_pattern,
+        )
 
 
 @dataclass(frozen=True)

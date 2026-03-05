@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from logging import getLevelNamesMapping
@@ -16,10 +17,11 @@ container = make_async_container(AppProvider(), FastapiProvider())
 
 logger = structlog.get_logger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     settings = await container.get(Settings)
-    log_level = getLevelNamesMapping().get(settings.log_level)
+    log_level = getLevelNamesMapping().get(settings.log_level, logging.INFO)
     setup_logger(log_level=log_level, console_render=settings.debug)
 
     logger.info(
@@ -28,8 +30,6 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         debug=settings.debug,
         rabbit_exchange=settings.rabbit_exchange,
     )
-
-    logger.info("RabbitMQ topology ensured")
 
     consumer_runner = await container.get(IEventConsumerRunner)
     await consumer_runner.start()
@@ -43,6 +43,5 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Event receiver application shutdown complete")
 
 
-app = FastAPI(title="admin", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="event-saver", version="0.1.0", lifespan=lifespan)
 setup_dishka(container=container, app=app)
-

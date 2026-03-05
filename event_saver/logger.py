@@ -32,7 +32,10 @@ def setup_logger(log_level: int, console_render: bool) -> None:
         shared_processors.append(structlog.processors.dict_tracebacks)
 
     structlog.configure(
-        processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
@@ -64,21 +67,27 @@ def configure_default_logging(
     root_logger.addHandler(handler)
     root_logger.setLevel(log_level)
 
-    logging.getLogger("aiokafka").setLevel(logging.ERROR)
-    logging.getLogger("asyncio_redis").setLevel(logging.ERROR)
-    logging.getLogger("urllib3").setLevel(logging.ERROR)
-    logging.getLogger("botocore").setLevel(logging.ERROR)
+    # Suppress noisy third-party loggers that are not relevant to this service.
+    logging.getLogger("aio_pika").setLevel(logging.WARNING)
+    logging.getLogger("aiormq").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.ERROR)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def get_logs_renderer(console_render: bool) -> Callable[..., str] | JSONRenderer:
     if console_render:
 
-        def exception_fixer(logger: structlog.dev.WrappedLogger, name: str, event_dict: structlog.dev.EventDict) -> str:
+        def exception_fixer(
+            logger: structlog.dev.WrappedLogger,
+            name: str,
+            event_dict: structlog.dev.EventDict,
+        ) -> str:
             if isinstance(event_dict.get("exception"), list):
                 event_dict["exception"] = "".join(event_dict["exception"])
             return structlog.dev.ConsoleRenderer(colors=True)(logger, name, event_dict)
 
         return exception_fixer
 
-    return structlog.processors.JSONRenderer(serializer=partial(ujson.dumps, ensure_ascii=False))
+    return structlog.processors.JSONRenderer(
+        serializer=partial(ujson.dumps, ensure_ascii=False),
+    )

@@ -11,11 +11,14 @@ class Event(Base):
     __tablename__ = "events"
 
     event_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    booking_id: Mapped[str] = mapped_column(Text, nullable=True)
+    booking_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     hash: Mapped[str] = mapped_column(Text, nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

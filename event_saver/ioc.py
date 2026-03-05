@@ -1,9 +1,14 @@
-from typing import AsyncGenerator, Any
+from collections.abc import AsyncGenerator
 
 import structlog
 from dishka import Provider, Scope, provide
 from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, fastapi
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from event_saver.adapters import (
     CloudEventPublisher,
@@ -61,7 +66,6 @@ class AppProvider(Provider):
         logger.info("Providing EventRouter")
         return EventRouter(settings.routing)
 
-
     @provide(scope=Scope.APP)
     def provide_publisher(
         self,
@@ -83,7 +87,10 @@ class AppProvider(Provider):
         broker: RabbitBroker,
         exchange: RabbitExchange,
     ) -> ITopologyManager:
-        logger.info("Providing RabbitTopologyManager", topology_queue_count=len(settings.topology_queues))
+        logger.info(
+            "Providing RabbitTopologyManager",
+            topology_queue_count=len(settings.topology_queues),
+        )
         return RabbitTopologyManager(
             broker=broker,
             exchange=exchange,
@@ -91,7 +98,10 @@ class AppProvider(Provider):
         )
 
     @provide(scope=Scope.APP)
-    async def provide_db_engine(self, settings: Settings) -> AsyncGenerator[AsyncEngine, Any]:
+    async def provide_db_engine(
+        self,
+        settings: Settings,
+    ) -> AsyncGenerator[AsyncEngine, None]:
         engine = create_async_engine(
             str(settings.postgres_dsn),
             pool_size=10,
@@ -104,7 +114,10 @@ class AppProvider(Provider):
             await engine.dispose()
 
     @provide(scope=Scope.APP)
-    def provide_sessionmaker(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    def provide_sessionmaker(
+        self,
+        engine: AsyncEngine,
+    ) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(
             bind=engine,
             expire_on_commit=False,
@@ -113,9 +126,9 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     async def provide_session(
-            self,
-            sessionmaker: async_sessionmaker[AsyncSession],
-    ) -> AsyncGenerator[AsyncSession, Any]:
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+    ) -> AsyncGenerator[AsyncSession, None]:
         async with sessionmaker() as session:
             yield session
 

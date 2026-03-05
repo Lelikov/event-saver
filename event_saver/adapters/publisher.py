@@ -32,7 +32,10 @@ class CloudEventPublisher(ICloudEventPublisher):
         event_id: str | None = None,
         event_time: str | None = None,
     ) -> None:
-        routing_key = self._router_by_event.resolve_routing_key_by_fields(source=source, event_type=event_type)
+        routing_key = self._router_by_event.resolve_routing_key_by_fields(
+            source=source,
+            event_type=event_type,
+        )
         logger.debug(
             "Resolved routing key for outbound CloudEvent",
             source=source,
@@ -94,7 +97,10 @@ class RabbitTopologyManager(ITopologyManager):
         for queue_name in self._topology_queues:
             queue = RabbitQueue(name=queue_name, durable=True, routing_key=queue_name)
             declared_queue = await self._broker.declare_queue(queue)
-            await declared_queue.bind(exchange=declared_exchange, routing_key=queue_name)
+            await declared_queue.bind(
+                exchange=declared_exchange,
+                routing_key=queue_name,
+            )
             logger.debug(
                 "Queue declared and bound",
                 queue=queue_name,
@@ -102,4 +108,8 @@ class RabbitTopologyManager(ITopologyManager):
                 routing_key=queue_name,
             )
 
-        logger.info("Rabbit topology ensured", exchange=self._exchange.name, queues=sorted(self._topology_queues))
+        logger.info(
+            "Rabbit topology ensured",
+            exchange=self._exchange.name,
+            queues=sorted(self._topology_queues),
+        )

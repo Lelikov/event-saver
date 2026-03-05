@@ -1,11 +1,12 @@
 """create_events_table
 
 Revision ID: 9bb09c895183
-Revises: 
+Revises:
 Create Date: 2026-03-02 23:37:10.330377
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 import sqlalchemy as sa
@@ -13,10 +14,10 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9bb09c895183'
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "9bb09c895183"
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

@@ -7,7 +7,7 @@ class IEventStore(Protocol):
         self,
         *,
         event_id: str,
-        booking_id: str,
+        booking_id: str | None,
         event_type: str,
         source: str,
         occurred_at: datetime,
