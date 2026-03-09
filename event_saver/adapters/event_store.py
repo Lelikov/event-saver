@@ -5,7 +5,7 @@ from typing import Any
 import ujson
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from event_saver.event_types import EventType, ParticipantRole, SourceType
+from event_saver.event_types import EventType, ParticipantRole, QueueName, SourceType
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.projection import IEventProjectionStatementFactory
 from event_saver.interfaces.sql import ISqlExecutorFactory
@@ -61,6 +61,7 @@ class SqlEventStore(IEventStore):
 
             booking_ref_id = await self._save_booking(
                 sql=sql,
+                queue_name=queue_name,
                 booking_id=booking_id,
                 occurred_at=occurred_at,
                 event_type=event_type,
@@ -215,12 +216,25 @@ class SqlEventStore(IEventStore):
         self,
         *,
         sql: Any,
+        queue_name: str,
         booking_id: str,
         occurred_at: datetime,
         event_type: str,
         organizer_ref_id: int | None,
         client_ref_id: int | None,
     ) -> int | None:
+        if queue_name != QueueName.EVENTS_BOOKING_LIFECYCLE:
+            existing_row = await sql.fetch_one(
+                """
+                select id
+                from bookings
+                where booking_uid = :booking_uid
+                limit 1
+                """,
+                {"booking_uid": booking_id},
+            )
+            return int(existing_row["id"]) if existing_row is not None else None
+
         row = await sql.fetch_one(
             """
             insert into bookings (
@@ -345,6 +359,27 @@ class SqlEventStore(IEventStore):
     ) -> int | None:
         if email is None:
             return None
+
+        existing_row = await sql.fetch_one(
+            """
+            select id, role, time_zone
+            from participants
+            where email = :email
+            limit 1
+            """,
+            {"email": email},
+        )
+
+        if existing_row is not None:
+            existing_id = int(existing_row["id"])
+            existing_role = existing_row["role"]
+            existing_time_zone = existing_row["time_zone"]
+
+            role_is_same_or_empty = role is None or role == existing_role
+            time_zone_is_same_or_empty = time_zone is None or time_zone == existing_time_zone
+
+            if role_is_same_or_empty and time_zone_is_same_or_empty:
+                return existing_id
 
         row = await sql.fetch_one(
             """

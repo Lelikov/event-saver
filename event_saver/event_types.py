@@ -13,6 +13,10 @@ class ParticipantRole(StrEnum):
     CLIENT = "client"
 
 
+class QueueName(StrEnum):
+    EVENTS_BOOKING_LIFECYCLE = "events.booking.lifecycle"
+
+
 class EventType(StrEnum):
     GETSTREAM_MESSAGE_NEW = "getstream.events.v1.message.new.create"
     GETSTREAM_CHANNEL_CREATED = "getstream.events.v1.channel.created.create"
