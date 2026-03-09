@@ -1,15 +1,19 @@
 import hashlib
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import ujson
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from event_saver.event_types import EventType, ParticipantRole, QueueName, SourceType
 from event_saver.interfaces.event_store import IEventStore
-from event_saver.interfaces.projection import IEventProjectionStatementFactory
-from event_saver.interfaces.sql import ISqlExecutorFactory
 from event_saver.utils import decode_user_id
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from event_saver.interfaces.projection import IEventProjectionStatementFactory
+    from event_saver.interfaces.sql import ISqlExecutorFactory
 
 
 class SqlEventStore(IEventStore):
@@ -65,6 +69,7 @@ class SqlEventStore(IEventStore):
                 booking_id=booking_id,
                 occurred_at=occurred_at,
                 event_type=event_type,
+                payload=payload,
                 organizer_ref_id=organizer_ref_id,
                 client_ref_id=client_ref_id,
             )
@@ -220,6 +225,7 @@ class SqlEventStore(IEventStore):
         booking_id: str,
         occurred_at: datetime,
         event_type: str,
+        payload: dict[str, Any],
         organizer_ref_id: int | None,
         client_ref_id: int | None,
     ) -> int | None:
@@ -241,6 +247,8 @@ class SqlEventStore(IEventStore):
                 booking_uid,
                 first_seen_at,
                 last_seen_at,
+                start_time,
+                end_time,
                 current_status,
                 current_organizer_participant_ref_id,
                 current_client_participant_ref_id
@@ -248,6 +256,8 @@ class SqlEventStore(IEventStore):
                 :booking_uid,
                 :first_seen_at,
                 :last_seen_at,
+                :start_time,
+                :end_time,
                 :current_status,
                 :current_organizer_participant_ref_id,
                 :current_client_participant_ref_id
@@ -255,6 +265,8 @@ class SqlEventStore(IEventStore):
             on conflict (booking_uid) do update
             set
                 last_seen_at = greatest(bookings.last_seen_at, excluded.last_seen_at),
+                start_time = coalesce(excluded.start_time, bookings.start_time),
+                end_time = coalesce(excluded.end_time, bookings.end_time),
                 current_status = coalesce(excluded.current_status, bookings.current_status),
                 current_organizer_participant_ref_id = coalesce(
                     excluded.current_organizer_participant_ref_id,
@@ -271,12 +283,44 @@ class SqlEventStore(IEventStore):
                 "booking_uid": booking_id,
                 "first_seen_at": occurred_at,
                 "last_seen_at": occurred_at,
+                "start_time": self._extract_booking_datetime(
+                    event_type=event_type,
+                    payload=payload,
+                    field_name="start_time",
+                ),
+                "end_time": self._extract_booking_datetime(
+                    event_type=event_type,
+                    payload=payload,
+                    field_name="end_time",
+                ),
                 "current_status": self._extract_booking_status(event_type=event_type),
                 "current_organizer_participant_ref_id": organizer_ref_id,
                 "current_client_participant_ref_id": client_ref_id,
             },
         )
         return int(row["id"]) if row is not None else None
+
+    @staticmethod
+    def _extract_booking_datetime(
+        *,
+        event_type: str,
+        payload: dict[str, Any],
+        field_name: str,
+    ) -> datetime | None:
+        if event_type != EventType.BOOKING_CREATED:
+            return None
+
+        value = payload.get(field_name)
+        if isinstance(value, datetime):
+            return value
+        if not isinstance(value, str) or not value:
+            return None
+
+        candidate = value.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
 
     @staticmethod
     async def _save_organizer_history(
