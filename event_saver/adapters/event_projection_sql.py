@@ -104,6 +104,13 @@ class EventProjectionStatementFactory(IEventProjectionStatementFactory):
                 payload=payload,
                 occurred_at=occurred_at,
             ),
+            self._build_chat_read_update_statements(
+                booking_ref_id=booking_ref_id,
+                source=source,
+                event_type=event_type,
+                payload=payload,
+                occurred_at=occurred_at,
+            ),
         ):
             if statement is not None:
                 statements.append(statement)
@@ -443,6 +450,7 @@ class EventProjectionStatementFactory(IEventProjectionStatementFactory):
                 chat_event_type,
                 message_id,
                 participant_ref_id,
+                is_read,
                 text_preview,
                 occurred_at
             ) values (
@@ -452,6 +460,7 @@ class EventProjectionStatementFactory(IEventProjectionStatementFactory):
                 :chat_event_type,
                 :message_id,
                 coalesce(:participant_ref_id, (select id from participants where email = :participant_email)),
+                :is_read,
                 :text_preview,
                 :occurred_at
             )
@@ -465,8 +474,47 @@ class EventProjectionStatementFactory(IEventProjectionStatementFactory):
                 "message_id": message_id,
                 "participant_ref_id": participant_ref_id,
                 "participant_email": participant_email,
+                "is_read": None,
                 "text_preview": text_preview,
                 "occurred_at": occurred_at,
+            },
+        )
+
+    def _build_chat_read_update_statements(
+        self,
+        *,
+        booking_ref_id: int,
+        source: str,
+        event_type: str,
+        payload: dict[str, Any],
+        occurred_at: datetime,
+    ) -> tuple[str, dict] | None:
+        if source != SourceType.GETSTREAM or event_type != EventType.GETSTREAM_MESSAGE_READ:
+            return None
+
+        participant_email = _extract_chat_participant_email(
+            source=source,
+            payload=payload,
+            decode_user_id=self._decode_user_id,
+        )
+
+        return (
+            """
+                update booking_chat_events
+                set is_read = true, updated_at = now()
+                where booking_ref_id = :booking_ref_id
+                  and chat_event_type = 'message.new'
+                  and participant_ref_id != (select id from participants where email = :participant_email limit 1)
+                  and (
+                      message_id = :last_read_message_id
+                      or occurred_at < :read_occurred_at
+                  )
+                """,
+            {
+                "booking_ref_id": booking_ref_id,
+                "participant_email": participant_email,
+                "last_read_message_id": payload.get("last_read_message_id"),
+                "read_occurred_at": occurred_at,
             },
         )
 

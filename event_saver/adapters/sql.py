@@ -21,8 +21,6 @@ class SqlExecutor:
 
     async def execute_in_transaction(self, statements: list[tuple[str, dict]]) -> None:
         if self.session.in_transaction():
-            # Transaction is already managed externally — only execute statements
-            # and let the outer context handle commit/rollback.
             for query, values in statements:
                 await self.session.execute(text(query), values)
             return

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -318,8 +318,15 @@ class BookingChatEvent(Base):
         ForeignKey("participants.id", ondelete="SET NULL"),
         nullable=True,
     )
+    is_read: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     text_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        server_onupdate=text("now()"),
+    )
 
     __table_args__ = (
         UniqueConstraint("raw_event_id", name="uq_booking_chat_events_raw_event_id"),

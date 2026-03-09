@@ -19,6 +19,7 @@ class QueueName(StrEnum):
 
 class EventType(StrEnum):
     GETSTREAM_MESSAGE_NEW = "getstream.events.v1.message.new.create"
+    GETSTREAM_MESSAGE_READ = "getstream.events.v1.message.read.create"
     GETSTREAM_CHANNEL_CREATED = "getstream.events.v1.channel.created.create"
     GETSTREAM_CHANNEL_DELETED = "getstream.events.v1.channel.deleted.create"
 
