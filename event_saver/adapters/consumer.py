@@ -14,22 +14,11 @@ logger = structlog.get_logger(__name__)
 
 
 def _parse_occurred_at(time_value: Any) -> datetime:
-    """Parse CloudEvent ``time`` attribute into a timezone-aware datetime.
-
-    The cloudevents SDK may return the attribute either as a :class:`datetime`
-    object or as an ISO-8601 string depending on the transport binding used.
-    Both cases are handled here.  If the value is absent (``None``), the
-    current UTC time is used as a fallback.
-    """
     if time_value is None:
         return datetime.now(UTC)
 
     if isinstance(time_value, datetime):
-        return (
-            time_value
-            if time_value.tzinfo is not None
-            else time_value.replace(tzinfo=UTC)
-        )
+        return time_value if time_value.tzinfo else time_value.replace(tzinfo=UTC)
 
     parsed = datetime.fromisoformat(str(time_value))
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
@@ -104,6 +93,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
 
         try:
             await self._event_store.save_event(
+                queue_name=queue_name,
                 event_id=event_id,
                 booking_id=booking_id,
                 event_type=event_type,

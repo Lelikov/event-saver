@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Protocol
 
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy.engine import RowMapping
 
 
@@ -17,3 +18,7 @@ class ISqlExecutor(Protocol):
         self,
         statements: list[tuple[str, dict]],
     ) -> None: ...
+
+
+class ISqlExecutorFactory(Protocol):
+    def __call__(self, session: AsyncSession) -> ISqlExecutor: ...

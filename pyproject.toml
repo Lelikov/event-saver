@@ -11,6 +11,7 @@ dependencies = [
     "fastapi>=0.135.1",
     "greenlet>=3.2.4",
     "faststream[rabbit]>=0.6.7",
+    "cryptography>=46.0.1",
     "pydantic-settings>=2.13.1",
     "sqlalchemy>=2.0.48",
     "structlog>=25.5.0",
@@ -23,3 +24,61 @@ dev = [
     "pre-commit>=4.5.1",
     "ruff>=0.15.4",
 ]
+
+[tool.ruff]
+exclude = [
+    ".env",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+]
+fix = true
+unsafe-fixes = true
+show-fixes = true
+target-version = "py314"
+line-length = 120
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+ignore = [
+    "ANN401",
+    "COM812",
+    "D1",
+    "D203",
+    "D213",
+    "EM",
+    "FA",
+    "FBT",
+    "G004",
+    "INP001",
+    "ISC001",
+    "PERF203",
+    "PLR",
+    "RET501",
+    "RUF001",
+    "S311",
+    "TRY003",
+    "UP040",
+]
+select = ["ALL"]
+
+[tool.ruff.lint.extend-per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/*.py" = [
+    "ANN001",
+    "ANN002",
+    "ANN003",
+    "ANN401",
+    "PLR2004",
+    "S101",
+    "S311",
+]
+
+[tool.ruff.lint.isort]
+no-lines-before = ["local-folder", "standard-library"]
+known-third-party = []
+known-local-folder = []
+lines-after-imports = 2

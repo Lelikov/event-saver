@@ -1,18 +1,84 @@
 from pydantic import AmqpDsn, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from event_saver.event_types import EventType
 from event_saver.routing import RouteRule, RoutingConfig
 
 
 def _default_route_rules() -> list[RouteRule]:
     return [
         RouteRule(
-            destination="events.mail",
-            source_pattern="unisender-go",
-            type_pattern="unisender.*",
+            destination="events.booking.lifecycle",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_CREATED,
         ),
         RouteRule(
-            destination="events.message",
+            destination="events.booking.lifecycle",
+            source_pattern="*",
+            type_pattern="booking.rescheduled",
+        ),
+        RouteRule(
+            destination="events.booking.lifecycle",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_REASSIGNED,
+        ),
+        RouteRule(
+            destination="events.booking.lifecycle",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_CANCELLED,
+        ),
+        RouteRule(
+            destination="events.booking.reminder",
+            source_pattern="*",
+            type_pattern="booking.reminder_sent",
+        ),
+        RouteRule(
+            destination="events.chat.lifecycle",
+            source_pattern="*",
+            type_pattern="chat.created",
+        ),
+        RouteRule(
+            destination="events.chat.lifecycle",
+            source_pattern="*",
+            type_pattern="chat.deleted",
+        ),
+        RouteRule(
+            destination="events.chat.activity",
+            source_pattern="*",
+            type_pattern="chat.message_sent",
+        ),
+        RouteRule(
+            destination="events.meeting.lifecycle",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_MEETING_URL_CREATED,
+        ),
+        RouteRule(
+            destination="events.meeting.lifecycle",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_MEETING_URL_DELETED,
+        ),
+        RouteRule(
+            destination="events.notification.delivery",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT,
+        ),
+        RouteRule(
+            destination="events.notification.delivery",
+            source_pattern="*",
+            type_pattern=EventType.BOOKING_NOTIFICATION_TELEGRAM_MESSAGE_SENT,
+        ),
+        RouteRule(
+            destination="events.jitsi",
+            source_pattern="jitsi*",
+            type_pattern="*",
+        ),
+        RouteRule(
+            destination="events.mail",
+            source_pattern="unisender-go",
+            type_pattern=EventType.UNISENDER_TRANSACTIONAL_STATUS,
+        ),
+        RouteRule(
+            destination="events.chat",
             source_pattern="getstream",
             type_pattern="getstream.*",
         ),
@@ -46,6 +112,7 @@ class Settings(BaseSettings):
     default_rabbit_destination: str = "events.unrouted"
     event_routing_rules: list[RouteRule] = Field(default_factory=_default_route_rules)
     rabbit_topology_queues: list[str] = Field(default_factory=list)
+    getstream_user_id_encryption_key: str | None = None
 
     postgres_dsn: PostgresDsn = Field(strict=True)
 

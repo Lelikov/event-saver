@@ -6,6 +6,7 @@ class IEventStore(Protocol):
     async def save_event(
         self,
         *,
+        queue_name: str,
         event_id: str,
         booking_id: str | None,
         event_type: str,

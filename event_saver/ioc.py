@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from event_saver.adapters import (
+    BookingTimelineClassifier,
     CloudEventPublisher,
+    EventProjectionStatementFactory,
     RabbitEventConsumerRunner,
     RabbitTopologyManager,
     SqlEventStore,
@@ -21,8 +23,12 @@ from event_saver.config import Settings
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.publisher import ICloudEventPublisher, ITopologyManager
+from event_saver.interfaces.projection import (
+    IBookingEventClassifier,
+    IEventProjectionStatementFactory,
+)
 from event_saver.interfaces.routing import IEventRouter
-from event_saver.interfaces.sql import ISqlExecutor
+from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 from event_saver.routing import EventRouter
 
 
@@ -137,11 +143,41 @@ class AppProvider(Provider):
         return SqlExecutor(session)
 
     @provide(scope=Scope.APP)
+    def provide_sql_executor_factory(self) -> ISqlExecutorFactory:
+        def factory(session: AsyncSession) -> ISqlExecutor:
+            return SqlExecutor(session)
+
+        return factory
+
+    @provide(scope=Scope.APP)
+    def provide_booking_timeline_classifier(self) -> IBookingEventClassifier:
+        return BookingTimelineClassifier()
+
+    @provide(scope=Scope.APP)
+    def provide_event_projection_statement_factory(
+        self,
+        settings: Settings,
+        classifier: IBookingEventClassifier,
+    ) -> IEventProjectionStatementFactory:
+        return EventProjectionStatementFactory(
+            classifier=classifier,
+            getstream_user_id_encryption_key=settings.getstream_user_id_encryption_key,
+        )
+
+    @provide(scope=Scope.APP)
     def provide_event_store(
         self,
+        settings: Settings,
         sessionmaker: async_sessionmaker[AsyncSession],
+        projection_factory: IEventProjectionStatementFactory,
+        sql_executor_factory: ISqlExecutorFactory,
     ) -> IEventStore:
-        return SqlEventStore(sessionmaker)
+        return SqlEventStore(
+            sessionmaker=sessionmaker,
+            projection_factory=projection_factory,
+            sql_executor_factory=sql_executor_factory,
+            getstream_user_id_encryption_key=settings.getstream_user_id_encryption_key,
+        )
 
     @provide(scope=Scope.APP)
     def provide_event_consumer_runner(
