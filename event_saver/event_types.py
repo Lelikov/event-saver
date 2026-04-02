@@ -29,6 +29,7 @@ class EventType(StrEnum):
     BOOKING_CREATED = "booking.events.v1.booking.created.create"
     BOOKING_CANCELLED = "booking.events.v1.booking.cancelled.create"
     BOOKING_REASSIGNED = "booking.events.v1.booking.reassigned.create"
+    BOOKING_REMINDER_SENT = "booking.events.v1.booking.reminder_sent.create"
 
     BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT = "booking.events.v1.notification.email.message_sent.create"
     BOOKING_NOTIFICATION_TELEGRAM_MESSAGE_SENT = "booking.events.v1.notification.telegram.message_sent.create"

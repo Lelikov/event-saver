@@ -182,20 +182,20 @@ class EventProjectionStatementFactory(IEventProjectionStatementFactory):
     ) -> tuple[str, dict[str, Any]] | None:
         if event_type == EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT:
             job_id = payload.get("job_id")
-            recipient_role = payload.get("recipient_role")
+            role = payload["users"][0].get("role") if payload.get("users") else None
             trigger_event = payload.get("trigger_event")
             email = _resolve_recipient_email(
                 payload=payload,
-                recipient_role=recipient_role if isinstance(recipient_role, str) else None,
+                recipient_role=role if isinstance(role, str) else None,
             )
             if not isinstance(job_id, str):
                 return None
 
             participant_ref_id = (
                 organizer_ref_id
-                if recipient_role == ParticipantRole.ORGANIZER
+                if role == ParticipantRole.ORGANIZER
                 else client_ref_id
-                if recipient_role == ParticipantRole.CLIENT
+                if role == ParticipantRole.CLIENT
                 else None
             )
 
