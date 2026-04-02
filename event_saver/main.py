@@ -13,13 +13,14 @@ from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.ioc import AppProvider
 from event_saver.logger import setup_logger
 
+
 container = make_async_container(AppProvider(), FastapiProvider())
 
 logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     settings = await container.get(Settings)
     log_level = getLevelNamesMapping().get(settings.log_level, logging.INFO)
     setup_logger(log_level=log_level, console_render=settings.debug)

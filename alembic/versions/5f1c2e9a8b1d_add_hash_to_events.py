@@ -1,4 +1,4 @@
-"""add_hash_to_events
+"""add_hash_to_events.
 
 Revision ID: 5f1c2e9a8b1d
 Revises: 9bb09c895183
@@ -8,8 +8,9 @@ Create Date: 2026-03-03 21:59:00.000000
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 
 # revision identifiers, used by Alembic.

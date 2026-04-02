@@ -1,4 +1,4 @@
-"""Change booking_id to nullable
+"""Change booking_id to nullable.
 
 Revision ID: 3a791de67f88
 Revises: 5f1c2e9a8b1d
@@ -8,8 +8,9 @@ Create Date: 2026-03-03 22:06:40.465434
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 
 # revision identifiers, used by Alembic.

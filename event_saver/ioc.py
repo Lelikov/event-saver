@@ -1,3 +1,6 @@
+"""DI container with clean architecture."""
+
+import hashlib
 from collections.abc import AsyncGenerator
 
 import structlog
@@ -13,29 +16,46 @@ from sqlalchemy.ext.asyncio import (
 from event_saver.adapters import (
     BookingTimelineClassifier,
     CloudEventPublisher,
-    EventProjectionStatementFactory,
     RabbitEventConsumerRunner,
     RabbitTopologyManager,
-    SqlEventStore,
     SqlExecutor,
 )
 from event_saver.config import Settings
+from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
+from event_saver.infrastructure.persistence.event_store_facade import CleanArchitectureEventStore
+from event_saver.infrastructure.persistence.projections import (
+    ChatEventProjection,
+    ChatReadUpdateProjection,
+    EmailNotificationProjection,
+    EmailStatusHistoryProjection,
+    MeetingLinkProjection,
+    TelegramNotificationProjection,
+    VideoEventProjection,
+)
+from event_saver.infrastructure.persistence.projections.base import BaseProjection
+from event_saver.infrastructure.persistence.repositories import (
+    BookingRepository,
+    EventRepository,
+    ParticipantRepository,
+)
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
+from event_saver.interfaces.projection import IBookingEventClassifier
 from event_saver.interfaces.publisher import ICloudEventPublisher, ITopologyManager
-from event_saver.interfaces.projection import (
-    IBookingEventClassifier,
-    IEventProjectionStatementFactory,
-)
 from event_saver.interfaces.routing import IEventRouter
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 from event_saver.routing import EventRouter
+from event_saver.utils import decode_user_id
 
 
 logger = structlog.get_logger(__name__)
 
 
 class AppProvider(Provider):
+    """DI provider with clean architecture."""
+
+    # ========== Configuration ==========
+
     @provide(scope=Scope.APP)
     def provide_settings(self) -> Settings:
         settings = Settings()
@@ -47,6 +67,8 @@ class AppProvider(Provider):
             routing_rules_count=len(settings.event_routing_rules),
         )
         return settings
+
+    # ========== Messaging Infrastructure ==========
 
     @provide(scope=Scope.APP)
     def provide_faststream_router(self, settings: Settings) -> fastapi.RabbitRouter:
@@ -103,11 +125,13 @@ class AppProvider(Provider):
             topology_queues=settings.topology_queues,
         )
 
+    # ========== Database Infrastructure ==========
+
     @provide(scope=Scope.APP)
     async def provide_db_engine(
         self,
         settings: Settings,
-    ) -> AsyncGenerator[AsyncEngine, None]:
+    ) -> AsyncGenerator[AsyncEngine]:
         engine = create_async_engine(
             str(settings.postgres_dsn),
             pool_size=10,
@@ -134,7 +158,7 @@ class AppProvider(Provider):
     async def provide_session(
         self,
         sessionmaker: async_sessionmaker[AsyncSession],
-    ) -> AsyncGenerator[AsyncSession, None]:
+    ) -> AsyncGenerator[AsyncSession]:
         async with sessionmaker() as session:
             yield session
 
@@ -144,40 +168,150 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def provide_sql_executor_factory(self) -> ISqlExecutorFactory:
+        """Factory for creating SQL executors."""
+
         def factory(session: AsyncSession) -> ISqlExecutor:
             return SqlExecutor(session)
 
         return factory
 
-    @provide(scope=Scope.APP)
-    def provide_booking_timeline_classifier(self) -> IBookingEventClassifier:
-        return BookingTimelineClassifier()
+    # ========== Domain Services ==========
 
     @provide(scope=Scope.APP)
-    def provide_event_projection_statement_factory(
+    def provide_event_parser(self) -> EventParser:
+        return EventParser()
+
+    @provide(scope=Scope.APP)
+    def provide_participant_extractor(self) -> ParticipantExtractor:
+        return ParticipantExtractor()
+
+    @provide(scope=Scope.APP)
+    def provide_booking_data_extractor(self) -> BookingDataExtractor:
+        return BookingDataExtractor()
+
+    @provide(scope=Scope.APP)
+    def provide_booking_event_classifier(self) -> IBookingEventClassifier:
+        return BookingTimelineClassifier()
+
+    # ========== Repositories ==========
+
+    @provide(scope=Scope.REQUEST)
+    def provide_event_repository(self, sql: ISqlExecutor) -> EventRepository:
+        return EventRepository(sql)
+
+    @provide(scope=Scope.REQUEST)
+    def provide_participant_repository(self, sql: ISqlExecutor) -> ParticipantRepository:
+        return ParticipantRepository(sql)
+
+    @provide(scope=Scope.REQUEST)
+    def provide_booking_repository(self, sql: ISqlExecutor) -> BookingRepository:
+        return BookingRepository(sql)
+
+    # ========== User ID Decoder ==========
+
+    @provide(scope=Scope.APP)
+    def provide_getstream_user_id_decoder(self, settings: Settings) -> callable:
+        """Provides a callable that decodes GetStream user IDs."""
+
+        def decoder(encoded_user_id: str) -> str:
+            if not settings.getstream_user_id_encryption_key:
+                return encoded_user_id
+
+            try:
+                key = hashlib.sha256(settings.getstream_user_id_encryption_key.encode()).digest()
+                return decode_user_id(encoded_user_id=encoded_user_id, encryption_key=key)
+            except Exception:
+                return encoded_user_id
+
+        return decoder
+
+    # ========== Projection Handlers ==========
+
+    @provide(scope=Scope.APP)
+    def provide_meeting_link_projection(self) -> MeetingLinkProjection:
+        return MeetingLinkProjection()
+
+    @provide(scope=Scope.APP)
+    def provide_email_notification_projection(self) -> EmailNotificationProjection:
+        return EmailNotificationProjection()
+
+    @provide(scope=Scope.APP)
+    def provide_telegram_notification_projection(self) -> TelegramNotificationProjection:
+        return TelegramNotificationProjection()
+
+    @provide(scope=Scope.APP)
+    def provide_email_status_history_projection(self) -> EmailStatusHistoryProjection:
+        return EmailStatusHistoryProjection()
+
+    @provide(scope=Scope.APP)
+    def provide_chat_event_projection(
         self,
-        settings: Settings,
         classifier: IBookingEventClassifier,
-    ) -> IEventProjectionStatementFactory:
-        return EventProjectionStatementFactory(
+        decoder: callable,
+    ) -> ChatEventProjection:
+        return ChatEventProjection(
             classifier=classifier,
-            getstream_user_id_encryption_key=settings.getstream_user_id_encryption_key,
+            decode_user_id=decoder,
         )
+
+    @provide(scope=Scope.APP)
+    def provide_chat_read_update_projection(self, decoder: callable) -> ChatReadUpdateProjection:
+        return ChatReadUpdateProjection(decode_user_id=decoder)
+
+    @provide(scope=Scope.APP)
+    def provide_video_event_projection(self, classifier: IBookingEventClassifier) -> VideoEventProjection:
+        return VideoEventProjection(classifier=classifier)
+
+    @provide(scope=Scope.APP)
+    def provide_projection_handlers(
+        self,
+        meeting_link: MeetingLinkProjection,
+        email_notification: EmailNotificationProjection,
+        telegram_notification: TelegramNotificationProjection,
+        email_status_history: EmailStatusHistoryProjection,
+        chat_event: ChatEventProjection,
+        chat_read_update: ChatReadUpdateProjection,
+        video_event: VideoEventProjection,
+    ) -> list[BaseProjection]:
+        """Collect all projection handlers into a list."""
+        return [
+            meeting_link,
+            email_notification,
+            telegram_notification,
+            email_status_history,
+            chat_event,
+            chat_read_update,
+            video_event,
+        ]
+
+    # ========== Event Store (Facade) ==========
 
     @provide(scope=Scope.APP)
     def provide_event_store(
         self,
-        settings: Settings,
         sessionmaker: async_sessionmaker[AsyncSession],
-        projection_factory: IEventProjectionStatementFactory,
+        event_parser: EventParser,
+        participant_extractor: ParticipantExtractor,
+        booking_data_extractor: BookingDataExtractor,
+        projection_handlers: list[BaseProjection],
         sql_executor_factory: ISqlExecutorFactory,
+        decoder: callable,
     ) -> IEventStore:
-        return SqlEventStore(
+        """Provides event store that uses clean architecture.
+
+        This facade creates use case for each save_event call.
+        """
+        return CleanArchitectureEventStore(
             sessionmaker=sessionmaker,
-            projection_factory=projection_factory,
+            event_parser=event_parser,
+            participant_extractor=participant_extractor,
+            booking_data_extractor=booking_data_extractor,
+            projection_handlers=projection_handlers,
             sql_executor_factory=sql_executor_factory,
-            getstream_user_id_encryption_key=settings.getstream_user_id_encryption_key,
+            getstream_user_id_decoder=decoder,
         )
+
+    # ========== Consumer ==========
 
     @provide(scope=Scope.APP)
     def provide_event_consumer_runner(

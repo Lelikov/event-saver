@@ -1,4 +1,4 @@
-"""add_booking_projection_tables
+"""add_booking_projection_tables.
 
 Revision ID: b2c4f8a1d9e3
 Revises: 3a791de67f88
@@ -8,9 +8,10 @@ Create Date: 2026-03-07 22:35:00.000000
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 
 # revision identifiers, used by Alembic.

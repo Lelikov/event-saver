@@ -1,4 +1,4 @@
-"""create_events_table
+"""create_events_table.
 
 Revision ID: 9bb09c895183
 Revises:
@@ -8,9 +8,10 @@ Create Date: 2026-03-02 23:37:10.330377
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 
 # revision identifiers, used by Alembic.

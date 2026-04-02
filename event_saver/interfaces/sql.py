@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Protocol
 
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy.engine import RowMapping
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ISqlExecutor(Protocol):

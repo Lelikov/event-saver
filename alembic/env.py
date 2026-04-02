@@ -1,13 +1,14 @@
-from logging.config import fileConfig
 import asyncio
+from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from event_saver.config import Settings
-from event_saver.db.base import Base
 from event_saver.db import models  # noqa: F401
+from event_saver.db.base import Base
+
 
 config = context.config
 
