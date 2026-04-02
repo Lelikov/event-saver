@@ -13,6 +13,11 @@ from event_saver.interfaces.event_store import IEventStore
 logger = structlog.get_logger(__name__)
 
 
+def _extract_extension(event: dict[str, Any], key: str) -> str | None:
+    """Extract CloudEvents extension field."""
+    return event.get(key)
+
+
 def _parse_occurred_at(time_value: Any) -> datetime:
     if time_value is None:
         return datetime.now(UTC)
@@ -91,6 +96,19 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         booking_id = event.get("booking_id")
         occurred_at = _parse_occurred_at(event["time"])
 
+        # Extract CloudEvents extensions
+        idempotency_key = _extract_extension(event, "idempotencykey")
+        trace_id = _extract_extension(event, "traceid")
+        span_id = _extract_extension(event, "spanid")
+        dataschema = _extract_extension(event, "dataschema")
+
+        # Bind trace_id to structlog context for all subsequent logs
+        if trace_id:
+            structlog.contextvars.bind_contextvars(
+                trace_id=trace_id,
+                span_id=span_id,
+            )
+
         try:
             await self._event_store.save_event(
                 queue_name=queue_name,
@@ -100,6 +118,10 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
                 source=source,
                 occurred_at=occurred_at,
                 payload=event.data or {},
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                span_id=span_id,
+                dataschema=dataschema,
             )
         except Exception:
             logger.exception(
@@ -109,8 +131,13 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
                 event_type=event_type,
                 source=source,
                 booking_id=booking_id,
+                trace_id=trace_id,
             )
             raise
+        finally:
+            # Clear context after processing
+            if trace_id:
+                structlog.contextvars.clear_contextvars()
 
         logger.info(
             "Event consumed and saved",
@@ -118,4 +145,5 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
             event_id=event_id,
             event_type=event_type,
             booking_id=booking_id,
+            trace_id=trace_id,
         )

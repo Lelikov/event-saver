@@ -62,6 +62,10 @@ class IngestEventUseCase:
         time: Any,
         booking_id: str | None,
         data: dict[str, Any] | None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        span_id: str | None = None,
+        dataschema: str | None = None,
     ) -> None:
         """Execute event ingestion flow.
 
@@ -73,6 +77,10 @@ class IngestEventUseCase:
             time: CloudEvent time
             booking_id: Optional booking identifier
             data: Event payload
+            idempotency_key: Optional idempotency key for deduplication
+            trace_id: Optional trace ID for distributed tracing
+            span_id: Optional span ID for distributed tracing
+            dataschema: Optional schema version
 
         """
         # Step 1: Parse event into domain model
@@ -83,6 +91,10 @@ class IngestEventUseCase:
             time=time,
             booking_id=booking_id,
             data=data,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+            span_id=span_id,
+            dataschema=dataschema,
         )
 
         # Step 2: Save raw event (with deduplication)

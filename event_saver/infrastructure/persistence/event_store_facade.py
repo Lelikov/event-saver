@@ -54,6 +54,10 @@ class CleanArchitectureEventStore(IEventStore):
         source: str,
         occurred_at: datetime,
         payload: dict[str, Any],
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        span_id: str | None = None,
+        dataschema: str | None = None,
     ) -> None:
         """Save event by delegating to use case.
 
@@ -92,6 +96,10 @@ class CleanArchitectureEventStore(IEventStore):
                 time=occurred_at,
                 booking_id=booking_id,
                 data=payload,
+                idempotency_key=idempotency_key,
+                trace_id=trace_id,
+                span_id=span_id,
+                dataschema=dataschema,
             )
 
             # Commit transaction

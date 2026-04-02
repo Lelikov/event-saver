@@ -274,25 +274,34 @@ def provide_projection_handlers(
 
 ## 📚 Документация
 
+### Проект
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) - Детальный контекст проекта (RU)
 - [EVENTS_DIGEST.md](EVENTS_DIGEST.md) - Схемы payload событий
 - [QUEUES_DIGEST.md](QUEUES_DIGEST.md) - Маршрутизация событий по очередям
 - [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) - История рефакторинга
-- [C4 Diagrams](docs/architecture/C4_DIAGRAMS.md) - Архитектурные диаграммы
-- [ADRs](docs/architecture/ARCHITECTURE_DECISION_RECORDS.md) - Архитектурные решения
 - [CLAUDE.md](CLAUDE.md) - Документация для Claude Code
+
+### Архитектура
+- [C4 Diagrams](docs/architecture/C4_DIAGRAMS.md) - Архитектурные диаграммы event-saver
+- [ADRs](docs/architecture/ARCHITECTURE_DECISION_RECORDS.md) - Архитектурные решения
+- [Integration Diagrams](docs/architecture/INTEGRATION_DIAGRAMS.md) - Диаграммы взаимодействия с event-receiver
+
+### Интеграция с event-receiver
+- [Integration Analysis](docs/SERVICE_INTEGRATION_ANALYSIS.md) - Детальный анализ взаимодействия (40+ страниц)
+- [Improvements Summary](docs/INTEGRATION_IMPROVEMENTS_SUMMARY.md) - Краткое резюме и roadmap
 
 ## 🛠️ Технологический стек
 
 - **Python 3.14** - Язык программирования
 - **FastAPI** - Web framework + lifespan management
 - **FastStream** - RabbitMQ integration
-- **CloudEvents** - Стандартный формат событий
+- **CloudEvents** - Стандартный формат событий (с extensions для tracing/idempotency)
+- **event-schemas** - Shared event schemas library (Pydantic models)
 - **SQLAlchemy 2.x (async)** - ORM
 - **asyncpg** - PostgreSQL драйвер
 - **Alembic** - Database migrations
 - **Dishka** - Dependency injection
-- **Structlog** - Structured logging
+- **Structlog** - Structured logging (с distributed tracing support)
 - **Ruff** - Linter & formatter
 
 ## 📝 Лицензия

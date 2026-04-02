@@ -15,6 +15,11 @@ class RawEventData:
     occurred_at: datetime
     booking_id: str | None
     payload: dict[str, Any]
+    # CloudEvents extensions for tracing and deduplication
+    idempotency_key: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
+    dataschema: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +55,19 @@ class ParsedEvent:
     @property
     def payload(self) -> dict[str, Any]:
         return self.raw.payload
+
+    @property
+    def idempotency_key(self) -> str | None:
+        return self.raw.idempotency_key
+
+    @property
+    def trace_id(self) -> str | None:
+        return self.raw.trace_id
+
+    @property
+    def span_id(self) -> str | None:
+        return self.raw.span_id
+
+    @property
+    def dataschema(self) -> str | None:
+        return self.raw.dataschema

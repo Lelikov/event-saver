@@ -24,6 +24,10 @@ class EventParser:
         time: Any,
         booking_id: str | None,
         data: dict[str, Any] | None,
+        idempotency_key: str | None = None,
+        trace_id: str | None = None,
+        span_id: str | None = None,
+        dataschema: str | None = None,
     ) -> ParsedEvent:
         """Parse raw event attributes into domain model.
 
@@ -34,6 +38,10 @@ class EventParser:
             time: CloudEvent time (can be datetime or ISO string)
             booking_id: Optional booking identifier
             data: Event payload
+            idempotency_key: Optional idempotency key for deduplication
+            trace_id: Optional trace ID for distributed tracing
+            span_id: Optional span ID for distributed tracing
+            dataschema: Optional schema version
 
         Returns:
             ParsedEvent with normalized data and computed hash
@@ -50,6 +58,10 @@ class EventParser:
             occurred_at=occurred_at,
             booking_id=booking_id,
             payload=payload,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+            span_id=span_id,
+            dataschema=dataschema,
         )
 
         return ParsedEvent(raw=raw, payload_hash=payload_hash)
