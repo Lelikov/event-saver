@@ -172,7 +172,9 @@ class IngestEventUseCase:
 
         Returns tuple of (organizer_id, client_id).
         """
-        participants = self._extract_participants(event)
+        # Extract participants - no more if statements needed!
+        # ParticipantExtractor handles normalized structure automatically
+        participants = self._participant_extractor.extract(event.payload)
 
         organizer_id: int | None = None
         client_id: int | None = None
@@ -186,22 +188,3 @@ class IngestEventUseCase:
                 client_id = participant_id
 
         return organizer_id, client_id
-
-    def _extract_participants(self, event) -> list[Participant]:
-        """Extract participants based on event source."""
-        if event.source == SourceType.BOOKING:
-            return self._participant_extractor.extract_from_booking_event(event.payload)
-
-        if event.source == SourceType.UNISENDER_GO:
-            return self._participant_extractor.extract_from_unisender_event(event.payload)
-
-        if event.source == SourceType.GETSTREAM:
-            return self._participant_extractor.extract_from_getstream_event(
-                event.payload,
-                decode_user_id=self._getstream_user_id_decoder,
-            )
-
-        if event.source == SourceType.JITSI:
-            return self._participant_extractor.extract_from_jitsi_event(event.payload)
-
-        return []
