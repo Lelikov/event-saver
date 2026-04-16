@@ -49,22 +49,20 @@ Single Alembic migration:
 
 ## Section 2: Domain & Application Layer
 
-### `Participant` value object (simplified)
+### `Participant` value object — deleted
 
-Kept as a thin transient model — only used during event processing to carry user_id → role mapping.
-Never persisted.
-
-```python
-@dataclass(frozen=True, slots=True)
-class Participant:
-    user_id: uuid.UUID
-    role: str  # "organizer" | "client"
-```
+No longer needed. `role` is used only as a routing key during extraction; it is not modelled,
+stored, or passed further down the chain.
 
 ### `ParticipantExtractor` (simplified)
 
-Reads `payload["normalized"]["participants"]`, extracts `user_id` + `role`.
-Skips entries missing `user_id`. Returns `list[Participant]`.
+Reads `payload["normalized"]["participants"]`, uses `role` solely to route each UUID to
+the correct output slot. Skips entries missing `user_id`. Returns a plain tuple:
+
+```python
+def extract(self, payload: dict) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """Return (organizer_user_id, client_user_id)."""
+```
 
 ### `ParticipantRepository` — deleted
 
@@ -72,15 +70,11 @@ No longer needed. No DB table, no repository.
 
 ### `IngestEventUseCase._process_participants`
 
-Returns `(organizer_user_id: uuid.UUID | None, client_user_id: uuid.UUID | None)` directly.
-No DB calls for participants.
+Delegates entirely to `ParticipantExtractor.extract()`. No DB calls.
 
 ```python
-async def _process_participants(self, event) -> tuple[uuid.UUID | None, uuid.UUID | None]:
-    participants = self._participant_extractor.extract(event.payload)
-    organizer_user_id = next((p.user_id for p in participants if p.role == "organizer"), None)
-    client_user_id = next((p.user_id for p in participants if p.role == "client"), None)
-    return organizer_user_id, client_user_id
+def _process_participants(self, event) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    return self._participant_extractor.extract(event.payload)
 ```
 
 ### `BookingRepository`
