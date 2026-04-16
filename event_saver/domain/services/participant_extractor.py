@@ -1,51 +1,59 @@
-"""Domain service for extracting participants from event payloads."""
+"""Domain service for extracting participant UUIDs from event payloads."""
 
+import uuid
 from typing import Any
-
-from event_saver.domain.models.participant import Participant
 
 
 class ParticipantExtractor:
-    """Extract participant information from normalized event payloads.
+    """Extract organizer and client UUIDs from normalized event payloads.
 
     Expects normalized structure from event-receiver:
     {
         "normalized": {
             "participants": [
-                {"email": "...", "role": "...", "time_zone": "..."}
+                {"role": "organizer", "user_id": "<uuid>"},
+                {"role": "client", "user_id": "<uuid>"}
             ]
         }
     }
 
-    All normalization (including GetStream user ID decoding) is done by event-receiver.
+    role is used only as a routing key — it is never stored or returned.
     """
 
-    def extract(self, payload: dict[str, Any]) -> list[Participant]:
-        """Extract participants from normalized payload."""
+    def extract(self, payload: dict[str, Any]) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+        """Return (organizer_user_id, client_user_id) from normalized payload."""
         normalized = payload.get("normalized")
         if not isinstance(normalized, dict):
-            return []
+            return None, None
 
         participants_data = normalized.get("participants", [])
         if not isinstance(participants_data, list):
-            return []
+            return None, None
 
-        participants: list[Participant] = []
+        organizer_user_id: uuid.UUID | None = None
+        client_user_id: uuid.UUID | None = None
 
         for p in participants_data:
             if not isinstance(p, dict):
                 continue
 
-            email = p.get("email")
-            if not isinstance(email, str) or not email:
+            role = p.get("role")
+            raw_user_id = p.get("user_id")
+
+            user_id: uuid.UUID | None = None
+            if isinstance(raw_user_id, str):
+                try:
+                    user_id = uuid.UUID(raw_user_id)
+                except ValueError:
+                    continue
+            elif isinstance(raw_user_id, uuid.UUID):
+                user_id = raw_user_id
+            else:
                 continue
 
-            participants.append(
-                Participant(
-                    email=email,
-                    role=p.get("role") if isinstance(p.get("role"), str) else None,
-                    time_zone=p.get("time_zone") if isinstance(p.get("time_zone"), str) else None,
-                )
-            )
+            if role == "organizer":
+                organizer_user_id = user_id
+            elif role == "client":
+                client_user_id = user_id
 
-        return participants
+        return organizer_user_id, client_user_id
