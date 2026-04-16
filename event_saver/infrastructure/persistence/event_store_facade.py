@@ -9,21 +9,13 @@ from event_saver.application.services.projection_executor import ProjectionExecu
 from event_saver.application.use_cases.ingest_event import IngestEventUseCase
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
-from event_saver.infrastructure.persistence.repositories import (
-    BookingRepository,
-    EventRepository,
-    ParticipantRepository,
-)
+from event_saver.infrastructure.persistence.repositories import BookingRepository, EventRepository
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.sql import ISqlExecutorFactory
 
 
 class CleanArchitectureEventStore(IEventStore):
-    """Event store facade that delegates to clean architecture use case.
-
-    Adapts the use case to the IEventStore interface for compatibility.
-    Each save_event call creates a new session and use case instance.
-    """
+    """Event store facade that delegates to clean architecture use case."""
 
     def __init__(
         self,
@@ -34,7 +26,6 @@ class CleanArchitectureEventStore(IEventStore):
         booking_data_extractor: BookingDataExtractor,
         projection_handlers: list[BaseProjection],
         sql_executor_factory: ISqlExecutorFactory,
-        getstream_user_id_decoder: callable,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._event_parser = event_parser
@@ -42,7 +33,6 @@ class CleanArchitectureEventStore(IEventStore):
         self._booking_data_extractor = booking_data_extractor
         self._projection_handlers = projection_handlers
         self._sql_executor_factory = sql_executor_factory
-        self._getstream_user_id_decoder = getstream_user_id_decoder
 
     async def save_event(
         self,
@@ -59,16 +49,11 @@ class CleanArchitectureEventStore(IEventStore):
         span_id: str | None = None,
         dataschema: str | None = None,
     ) -> None:
-        """Save event by delegating to use case.
-
-        Creates a new session and use case for each call.
-        """
+        """Save event by delegating to use case."""
         async with self._sessionmaker() as session:
-            # Create request-scoped dependencies
             sql = self._sql_executor_factory(session)
 
             event_repository = EventRepository(sql)
-            participant_repository = ParticipantRepository(sql)
             booking_repository = BookingRepository(sql)
 
             projection_executor = ProjectionExecutor(
@@ -81,13 +66,10 @@ class CleanArchitectureEventStore(IEventStore):
                 participant_extractor=self._participant_extractor,
                 booking_data_extractor=self._booking_data_extractor,
                 event_repository=event_repository,
-                participant_repository=participant_repository,
                 booking_repository=booking_repository,
                 projection_executor=projection_executor,
-                getstream_user_id_decoder=self._getstream_user_id_decoder,
             )
 
-            # Execute use case
             await use_case.execute(
                 queue_name=queue_name,
                 event_id=event_id,
@@ -102,5 +84,4 @@ class CleanArchitectureEventStore(IEventStore):
                 dataschema=dataschema,
             )
 
-            # Commit transaction
             await session.commit()

@@ -1,5 +1,7 @@
 """Service for executing projection handlers."""
 
+import uuid
+
 import structlog
 
 from event_saver.domain.models.event import ParsedEvent
@@ -11,10 +13,7 @@ logger = structlog.get_logger(__name__)
 
 
 class ProjectionExecutor:
-    """Executes projection handlers and persists results.
-
-    Separates projection logic from SQL execution infrastructure.
-    """
+    """Executes projection handlers and persists results."""
 
     def __init__(
         self,
@@ -31,13 +30,10 @@ class ProjectionExecutor:
         event: ParsedEvent,
         queue_name: str,
         booking_ref_id: int,
-        organizer_id: int | None,
-        client_id: int | None,
+        organizer_user_id: uuid.UUID | None,
+        client_user_id: uuid.UUID | None,
     ) -> None:
-        """Execute all applicable projection handlers for the event.
-
-        Continues processing even if individual projections fail.
-        """
+        """Execute all applicable projection handlers for the event."""
         for handler in self._handlers:
             if not handler.can_handle(event):
                 continue
@@ -46,8 +42,8 @@ class ProjectionExecutor:
                 result = await handler.handle(
                     event=event,
                     booking_ref_id=booking_ref_id,
-                    organizer_ref_id=organizer_id,
-                    client_ref_id=client_id,
+                    organizer_user_id=organizer_user_id,
+                    client_user_id=client_user_id,
                     queue_name=queue_name,
                 )
 
@@ -68,4 +64,3 @@ class ProjectionExecutor:
                     event_id=event.event_id,
                     event_type=event.event_type,
                 )
-                # Continue with other projections
