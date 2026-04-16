@@ -1,5 +1,6 @@
 """Projections for notifications (email and telegram)."""
 
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -9,12 +10,7 @@ from event_saver.infrastructure.persistence.projections.base import BaseProjecti
 
 
 class EmailNotificationProjection(BaseProjection):
-    """Projects email notification events to booking_email_notifications table.
-
-    Handles:
-    - booking.events.v1.notification.email.message_sent.create (sent)
-    - unisender.events.v1.transactional.status.create (delivery status)
-    """
+    """Projects email notification events to booking_email_notifications table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
         return event.event_type in {
@@ -27,16 +23,16 @@ class EmailNotificationProjection(BaseProjection):
         *,
         event: ParsedEvent,
         booking_ref_id: int,
-        organizer_ref_id: int | None,
-        client_ref_id: int | None,
+        organizer_user_id: uuid.UUID | None,
+        client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
         if event.event_type == EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT:
             return self._handle_email_sent(
                 event=event,
                 booking_ref_id=booking_ref_id,
-                organizer_ref_id=organizer_ref_id,
-                client_ref_id=client_ref_id,
+                organizer_user_id=organizer_user_id,
+                client_user_id=client_user_id,
             )
 
         if event.event_type == EventType.UNISENDER_TRANSACTIONAL_STATUS:
@@ -52,10 +48,9 @@ class EmailNotificationProjection(BaseProjection):
         *,
         event: ParsedEvent,
         booking_ref_id: int,
-        organizer_ref_id: int | None,
-        client_ref_id: int | None,
+        organizer_user_id: uuid.UUID | None,
+        client_user_id: uuid.UUID | None,
     ) -> tuple[str, dict[str, Any]] | None:
-        """Handle email.message_sent events."""
         job_id = event.payload.get("job_id")
         if not isinstance(job_id, str):
             return None
@@ -64,12 +59,10 @@ class EmailNotificationProjection(BaseProjection):
         role = users[0].get("role") if isinstance(users, list) and users else None
         trigger_event = event.payload.get("trigger_event")
 
-        email = self._resolve_recipient_email(event.payload, role)
-
-        participant_ref_id = (
-            organizer_ref_id
+        user_id = (
+            organizer_user_id
             if role == ParticipantRole.ORGANIZER
-            else client_ref_id
+            else client_user_id
             if role == ParticipantRole.CLIENT
             else None
         )
@@ -78,7 +71,7 @@ class EmailNotificationProjection(BaseProjection):
             """
             insert into booking_email_notifications (
                 booking_ref_id,
-                participant_ref_id,
+                user_id,
                 trigger_event,
                 job_id,
                 sent_event_id,
@@ -86,7 +79,7 @@ class EmailNotificationProjection(BaseProjection):
                 updated_at
             ) values (
                 :booking_ref_id,
-                coalesce(:participant_ref_id, (select id from participants where email = :email)),
+                :user_id,
                 :trigger_event,
                 :job_id,
                 :sent_event_id,
@@ -96,7 +89,7 @@ class EmailNotificationProjection(BaseProjection):
             on conflict (job_id) do update
             set
                 booking_ref_id = excluded.booking_ref_id,
-                participant_ref_id = coalesce(excluded.participant_ref_id, booking_email_notifications.participant_ref_id),
+                user_id = coalesce(excluded.user_id, booking_email_notifications.user_id),
                 trigger_event = excluded.trigger_event,
                 sent_event_id = excluded.sent_event_id,
                 sent_at = excluded.sent_at,
@@ -104,8 +97,7 @@ class EmailNotificationProjection(BaseProjection):
             """,
             {
                 "booking_ref_id": booking_ref_id,
-                "participant_ref_id": participant_ref_id,
-                "email": email,
+                "user_id": str(user_id) if user_id is not None else None,
                 "trigger_event": trigger_event if isinstance(trigger_event, str) else None,
                 "job_id": job_id,
                 "sent_event_id": event.event_id,
@@ -119,25 +111,23 @@ class EmailNotificationProjection(BaseProjection):
         event: ParsedEvent,
         booking_ref_id: int,
     ) -> tuple[str, dict[str, Any]] | None:
-        """Handle unisender transactional status events."""
         event_data = event.payload.get("event_data")
         if not isinstance(event_data, dict):
             return None
 
-        email = event_data.get("email")
         job_id = event_data.get("job_id")
         status = event_data.get("status")
         clicked_url = event_data.get("url")
         status_event_time = self._parse_iso_datetime(event_data.get("event_time"))
 
-        if not isinstance(email, str) or not isinstance(job_id, str):
+        if not isinstance(job_id, str):
             return None
 
         return (
             """
             insert into booking_email_notifications (
                 booking_ref_id,
-                participant_ref_id,
+                user_id,
                 job_id,
                 last_status,
                 last_status_event_time,
@@ -146,7 +136,7 @@ class EmailNotificationProjection(BaseProjection):
                 updated_at
             ) values (
                 :booking_ref_id,
-                (select id from participants where email = :email),
+                NULL,
                 :job_id,
                 :last_status,
                 :last_status_event_time,
@@ -157,7 +147,6 @@ class EmailNotificationProjection(BaseProjection):
             on conflict (job_id) do update
             set
                 booking_ref_id = excluded.booking_ref_id,
-                participant_ref_id = coalesce(excluded.participant_ref_id, booking_email_notifications.participant_ref_id),
                 last_status = excluded.last_status,
                 last_status_event_time = excluded.last_status_event_time,
                 last_status_event_id = excluded.last_status_event_id,
@@ -166,7 +155,6 @@ class EmailNotificationProjection(BaseProjection):
             """,
             {
                 "booking_ref_id": booking_ref_id,
-                "email": email,
                 "job_id": job_id,
                 "last_status": status if isinstance(status, str) else None,
                 "last_status_event_time": status_event_time,
@@ -176,37 +164,11 @@ class EmailNotificationProjection(BaseProjection):
         )
 
     @staticmethod
-    def _resolve_recipient_email(payload: dict[str, Any], role: str | None) -> str | None:
-        """Extract recipient email from payload based on role."""
-        direct_email = payload.get("email")
-        if isinstance(direct_email, str) and direct_email:
-            return direct_email
-
-        if role == ParticipantRole.ORGANIZER:
-            for key in ("user", "organizer"):
-                participant = payload.get(key)
-                if isinstance(participant, dict):
-                    email = participant.get("email")
-                    if isinstance(email, str) and email:
-                        return email
-
-        if role == ParticipantRole.CLIENT:
-            participant = payload.get("client")
-            if isinstance(participant, dict):
-                email = participant.get("email")
-                if isinstance(email, str) and email:
-                    return email
-
-        return None
-
-    @staticmethod
     def _parse_iso_datetime(value: Any) -> datetime | None:
-        """Parse ISO datetime string."""
         if isinstance(value, datetime):
             return value
         if not isinstance(value, str) or not value:
             return None
-
         candidate = value.replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(candidate)
@@ -216,10 +178,7 @@ class EmailNotificationProjection(BaseProjection):
 
 
 class TelegramNotificationProjection(BaseProjection):
-    """Projects telegram notification events to booking_telegram_notifications table.
-
-    Handles: booking.events.v1.notification.telegram.message_sent.create
-    """
+    """Projects telegram notification events to booking_telegram_notifications table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
         return event.event_type == EventType.BOOKING_NOTIFICATION_TELEGRAM_MESSAGE_SENT
@@ -229,36 +188,34 @@ class TelegramNotificationProjection(BaseProjection):
         *,
         event: ParsedEvent,
         booking_ref_id: int,
-        organizer_ref_id: int | None,
-        client_ref_id: int | None,
+        organizer_user_id: uuid.UUID | None,
+        client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
         users = event.payload.get("users")
         role = users[0].get("role") if isinstance(users, list) and users else None
         trigger_event = event.payload.get("trigger_event")
 
-        email = self._resolve_recipient_email(event.payload, role)
-
-        participant_ref_id = organizer_ref_id if role == ParticipantRole.ORGANIZER else client_ref_id
+        user_id = organizer_user_id if role == ParticipantRole.ORGANIZER else client_user_id
 
         return (
             """
             insert into booking_telegram_notifications (
                 booking_ref_id,
-                participant_ref_id,
+                user_id,
                 trigger_event,
                 sent_event_id,
                 sent_at,
                 updated_at
             ) values (
                 :booking_ref_id,
-                coalesce(:participant_ref_id, (select id from participants where email = :email)),
+                :user_id,
                 :trigger_event,
                 :sent_event_id,
                 :sent_at,
                 now()
             )
-            on conflict (booking_ref_id, participant_ref_id, trigger_event) do update
+            on conflict (booking_ref_id, user_id, trigger_event) do update
             set
                 sent_event_id = excluded.sent_event_id,
                 sent_at = excluded.sent_at,
@@ -266,37 +223,16 @@ class TelegramNotificationProjection(BaseProjection):
             """,
             {
                 "booking_ref_id": booking_ref_id,
-                "participant_ref_id": participant_ref_id,
-                "email": email,
+                "user_id": str(user_id) if user_id is not None else None,
                 "trigger_event": trigger_event if isinstance(trigger_event, str) else None,
                 "sent_event_id": event.event_id,
                 "sent_at": event.occurred_at,
             },
         )
 
-    @staticmethod
-    def _resolve_recipient_email(payload: dict[str, Any], role: str | None) -> str | None:
-        """Extract recipient email from payload based on role."""
-        direct_email = payload.get("email")
-        if isinstance(direct_email, str) and direct_email:
-            return direct_email
-
-        if role == ParticipantRole.ORGANIZER:
-            for key in ("user", "organizer"):
-                participant = payload.get(key)
-                if isinstance(participant, dict):
-                    email = participant.get("email")
-                    if isinstance(email, str) and email:
-                        return email
-
-        return None
-
 
 class EmailStatusHistoryProjection(BaseProjection):
-    """Projects email status changes to booking_email_status_history table.
-
-    Handles: unisender.events.v1.transactional.status.create
-    """
+    """Projects email status changes to booking_email_status_history table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
         return event.event_type == EventType.UNISENDER_TRANSACTIONAL_STATUS
@@ -306,8 +242,8 @@ class EmailStatusHistoryProjection(BaseProjection):
         *,
         event: ParsedEvent,
         booking_ref_id: int,
-        organizer_ref_id: int | None,
-        client_ref_id: int | None,
+        organizer_user_id: uuid.UUID | None,
+        client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
         event_data = event.payload.get("event_data")
@@ -352,12 +288,10 @@ class EmailStatusHistoryProjection(BaseProjection):
 
     @staticmethod
     def _parse_iso_datetime(value: Any) -> datetime | None:
-        """Parse ISO datetime string."""
         if isinstance(value, datetime):
             return value
         if not isinstance(value, str) or not value:
             return None
-
         candidate = value.replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(candidate)
