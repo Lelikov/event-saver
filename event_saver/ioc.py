@@ -1,11 +1,11 @@
 """DI container with clean architecture."""
 
-import hashlib
 from collections.abc import AsyncGenerator
 
 import structlog
 from dishka import Provider, Scope, provide
 from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, fastapi
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -19,6 +19,7 @@ from event_saver.adapters import (
     RabbitEventConsumerRunner,
     RabbitTopologyManager,
     SqlExecutor,
+    UsersClient,
 )
 from event_saver.config import Settings
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
@@ -36,7 +37,6 @@ from event_saver.infrastructure.persistence.projections.base import BaseProjecti
 from event_saver.infrastructure.persistence.repositories import (
     BookingRepository,
     EventRepository,
-    ParticipantRepository,
 )
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
@@ -44,8 +44,8 @@ from event_saver.interfaces.projection import IBookingEventClassifier
 from event_saver.interfaces.publisher import ICloudEventPublisher, ITopologyManager
 from event_saver.interfaces.routing import IEventRouter
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
+from event_saver.interfaces.users import IUsersClient
 from event_saver.routing import EventRouter
-from event_saver.utils import decode_user_id
 
 
 logger = structlog.get_logger(__name__)
@@ -200,30 +200,8 @@ class AppProvider(Provider):
         return EventRepository(sql)
 
     @provide(scope=Scope.REQUEST)
-    def provide_participant_repository(self, sql: ISqlExecutor) -> ParticipantRepository:
-        return ParticipantRepository(sql)
-
-    @provide(scope=Scope.REQUEST)
     def provide_booking_repository(self, sql: ISqlExecutor) -> BookingRepository:
         return BookingRepository(sql)
-
-    # ========== User ID Decoder ==========
-
-    @provide(scope=Scope.APP)
-    def provide_getstream_user_id_decoder(self, settings: Settings) -> callable:
-        """Provides a callable that decodes GetStream user IDs."""
-
-        def decoder(encoded_user_id: str) -> str:
-            if not settings.getstream_user_id_encryption_key:
-                return encoded_user_id
-
-            try:
-                key = hashlib.sha256(settings.getstream_user_id_encryption_key.encode()).digest()
-                return decode_user_id(encoded_user_id=encoded_user_id, encryption_key=key)
-            except Exception:
-                return encoded_user_id
-
-        return decoder
 
     # ========== Projection Handlers ==========
 
@@ -247,16 +225,12 @@ class AppProvider(Provider):
     def provide_chat_event_projection(
         self,
         classifier: IBookingEventClassifier,
-        decoder: callable,
     ) -> ChatEventProjection:
-        return ChatEventProjection(
-            classifier=classifier,
-            decode_user_id=decoder,
-        )
+        return ChatEventProjection(classifier=classifier)
 
     @provide(scope=Scope.APP)
-    def provide_chat_read_update_projection(self, decoder: callable) -> ChatReadUpdateProjection:
-        return ChatReadUpdateProjection(decode_user_id=decoder)
+    def provide_chat_read_update_projection(self) -> ChatReadUpdateProjection:
+        return ChatReadUpdateProjection()
 
     @provide(scope=Scope.APP)
     def provide_video_event_projection(self, classifier: IBookingEventClassifier) -> VideoEventProjection:
@@ -295,7 +269,6 @@ class AppProvider(Provider):
         booking_data_extractor: BookingDataExtractor,
         projection_handlers: list[BaseProjection],
         sql_executor_factory: ISqlExecutorFactory,
-        decoder: callable,
     ) -> IEventStore:
         """Provides event store that uses clean architecture.
 
@@ -308,7 +281,20 @@ class AppProvider(Provider):
             booking_data_extractor=booking_data_extractor,
             projection_handlers=projection_handlers,
             sql_executor_factory=sql_executor_factory,
-            getstream_user_id_decoder=decoder,
+        )
+
+    # ========== HTTP / Users Client ==========
+
+    @provide(scope=Scope.APP)
+    async def provide_http_client(self, settings: Settings) -> AsyncGenerator[AsyncClient]:
+        async with AsyncClient(base_url=str(settings.users_service_url)) as client:
+            yield client
+
+    @provide(scope=Scope.APP)
+    def provide_users_client(self, http_client: AsyncClient, settings: Settings) -> IUsersClient:
+        return UsersClient(
+            http_client=http_client,
+            api_token=settings.users_service_api_token,
         )
 
     # ========== Consumer ==========

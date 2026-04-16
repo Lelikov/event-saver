@@ -1,4 +1,4 @@
-from pydantic import AmqpDsn, Field, PostgresDsn, field_validator
+from pydantic import AmqpDsn, AnyHttpUrl, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from event_saver.event_types import EventType
@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     getstream_user_id_encryption_key: str | None = None
 
     postgres_dsn: PostgresDsn = Field(strict=True)
+
+    users_service_url: AnyHttpUrl = Field(strict=True)
+    users_service_api_token: str = Field(strict=True)
 
     @property
     def routing_destinations(self) -> set[str]:
