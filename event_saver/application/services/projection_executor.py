@@ -65,3 +65,4 @@ class ProjectionExecutor:
                     booking_id=event.booking_id,
                     event_id=event.event_id,
                 )
+                raise
