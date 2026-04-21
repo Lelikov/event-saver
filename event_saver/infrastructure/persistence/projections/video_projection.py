@@ -1,15 +1,37 @@
 """Projection for video conference events."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import ujson
+from event_schemas.types import EventType, RecipientRole, SourceType
 
 from event_saver.domain.models.event import ParsedEvent
-from event_saver.event_types import SourceType
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 from event_saver.interfaces.projection import IBookingEventClassifier
+from event_saver.utils import parse_iso_datetime
+
+
+_JITSI_PREFIX = "jitsi."
+
+_JITSI_EVENT_TYPES: frozenset[str] = frozenset(et.value for et in EventType if et.value.startswith(_JITSI_PREFIX))
+
+_MUTE_ACTIONS: frozenset[str] = frozenset(
+    {
+        EventType.JITSI_AUDIO_MUTE_STATUS_CHANGED.removeprefix(_JITSI_PREFIX),
+        EventType.JITSI_VIDEO_MUTE_STATUS_CHANGED.removeprefix(_JITSI_PREFIX),
+    }
+)
+
+_DEVICE_ACTION: str = EventType.JITSI_DEVICE_LIST_CHANGED.removeprefix(_JITSI_PREFIX)
+
+_CONFERENCE_ACTIONS: frozenset[str] = frozenset(
+    {
+        EventType.JITSI_CONFERENCE_JOINED.removeprefix(_JITSI_PREFIX),
+        EventType.JITSI_CONFERENCE_LEFT.removeprefix(_JITSI_PREFIX),
+    }
+)
 
 
 class VideoEventProjection(BaseProjection):
@@ -19,7 +41,7 @@ class VideoEventProjection(BaseProjection):
         self._classifier = classifier
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        return event.event_type.startswith("jitsi.events.v1.")
+        return event.event_type in _JITSI_EVENT_TYPES
 
     async def handle(
         self,
@@ -77,7 +99,8 @@ class VideoEventProjection(BaseProjection):
 
     @staticmethod
     def _extract_participant_role(payload: dict[str, Any]) -> str | None:
-        context = payload.get("context")
+        original = payload.get("original", payload)
+        context = original.get("context")
         if not isinstance(context, dict):
             return None
         user = context.get("user")
@@ -92,34 +115,26 @@ class VideoEventProjection(BaseProjection):
         organizer_user_id: uuid.UUID | None,
         client_user_id: uuid.UUID | None,
     ) -> uuid.UUID | None:
-        if role == "organizer":
+        if role == RecipientRole.ORGANIZER:
             return organizer_user_id
-        if role == "client":
+        if role == RecipientRole.CLIENT:
             return client_user_id
         return None
 
     @staticmethod
     def _extract_event_time(payload: dict[str, Any]) -> datetime | None:
-        time_value = payload.get("time")
-        if isinstance(time_value, datetime):
-            return time_value
-        if not isinstance(time_value, str) or not time_value:
-            return None
-        candidate = time_value.replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(candidate)
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-        except ValueError:
-            return None
+        original = payload.get("original", payload)
+        return parse_iso_datetime(original.get("time"))
 
     @staticmethod
     def _project_payload(video_event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if video_event_type in {"audioMuteStatusChanged", "videoMuteStatusChanged"}:
-            muted = payload.get("muted")
+        original = payload.get("original", payload)
+        if video_event_type in _MUTE_ACTIONS:
+            muted = original.get("muted")
             return {"muted": muted} if isinstance(muted, bool) else {}
-        if video_event_type == "deviceListChanged":
-            devices = payload.get("devices")
+        if video_event_type == _DEVICE_ACTION:
+            devices = original.get("devices")
             return {"devices": devices} if isinstance(devices, dict) else {}
-        if video_event_type in {"videoConferenceJoined", "videoConferenceLeft"}:
+        if video_event_type in _CONFERENCE_ACTIONS:
             return {}
-        return payload
+        return original

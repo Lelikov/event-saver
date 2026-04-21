@@ -1,6 +1,5 @@
 """Facade for event store that uses clean architecture use case."""
 
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -42,7 +41,7 @@ class CleanArchitectureEventStore(IEventStore):
         booking_id: str | None,
         event_type: str,
         source: str,
-        occurred_at: datetime,
+        time: Any,
         payload: dict[str, Any],
         idempotency_key: str | None = None,
         trace_id: str | None = None,
@@ -75,7 +74,7 @@ class CleanArchitectureEventStore(IEventStore):
                 event_id=event_id,
                 event_type=event_type,
                 source=source,
-                time=occurred_at,
+                time=time,
                 booking_id=booking_id,
                 data=payload,
                 idempotency_key=idempotency_key,

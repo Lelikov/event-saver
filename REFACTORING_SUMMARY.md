@@ -1,3 +1,5 @@
+> Last reviewed: 2026-04-20 — Refactoring is complete. Legacy code has been removed. See CLAUDE.md for current architecture.
+
 # Refactoring Summary: От спагетти к Clean Architecture
 
 ## Проблемы старого кода
@@ -315,6 +317,15 @@ event.xyz       # ← ошибка еще до запуска
 2. **Переместить messaging** из adapters/ в infrastructure/messaging/
 3. **Добавить интеграционные тесты** для use case
 4. **Документировать** каждую проекцию
+
+### Post-audit cleanup (2026-04-19) — DONE
+
+- ~~ioc.py cleanup (ioc_new.py never existed)~~ — confirmed clean
+- ~~Orphaned `IEventProjectionStatementFactory` interface removed from `interfaces/`~~
+- ~~`SqlExecutor.execute()` auto-commit bug fixed~~
+- `BOOKING_RESCHEDULED` added to EventType enum
+- DLQ added to consumer queue declarations
+- `participants` table dropped (migration `28bba7523965`); participant data now lives in `event-users` service
 
 ---
 

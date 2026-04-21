@@ -1,18 +1,15 @@
 import logging
-import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from logging import getLevelNamesMapping
 
-import httpx
 import structlog
 from dishka import make_async_container
-from dishka.integrations.fastapi import FastapiProvider, FromDishka, setup_dishka
-from fastapi import FastAPI, HTTPException
+from dishka.integrations.fastapi import FastapiProvider, setup_dishka
+from fastapi import FastAPI
 
 from event_saver.config import Settings
 from event_saver.interfaces.consumer import IEventConsumerRunner
-from event_saver.interfaces.users import IUsersClient
 from event_saver.ioc import AppProvider
 from event_saver.logger import setup_logger
 
@@ -49,14 +46,3 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="event-saver", version="0.1.0", lifespan=lifespan)
 setup_dishka(container=container, app=app)
-
-
-@app.get("/api/users/{user_id}")
-async def proxy_get_user(
-    user_id: uuid.UUID,
-    client: FromDishka[IUsersClient],
-) -> dict:
-    try:
-        return await client.get_user(user_id)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code) from exc

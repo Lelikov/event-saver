@@ -1,7 +1,7 @@
-from pydantic import AmqpDsn, AnyHttpUrl, Field, PostgresDsn, field_validator
+from event_schemas.types import EventType, SourceType
+from pydantic import AmqpDsn, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from event_saver.event_types import EventType
 from event_saver.routing import RouteRule, RoutingConfig
 
 
@@ -15,7 +15,7 @@ def _default_route_rules() -> list[RouteRule]:
         RouteRule(
             destination="events.booking.lifecycle",
             source_pattern="*",
-            type_pattern="booking.rescheduled",
+            type_pattern=EventType.BOOKING_RESCHEDULED,
         ),
         RouteRule(
             destination="events.booking.lifecycle",
@@ -35,56 +35,56 @@ def _default_route_rules() -> list[RouteRule]:
         RouteRule(
             destination="events.booking.reminder",
             source_pattern="*",
-            type_pattern="booking.reminder_sent",
+            type_pattern=EventType.BOOKING_REMINDER_SENT,
         ),
         RouteRule(
             destination="events.chat.lifecycle",
             source_pattern="*",
-            type_pattern="chat.created",
+            type_pattern=EventType.CHAT_CREATED,
         ),
         RouteRule(
             destination="events.chat.lifecycle",
             source_pattern="*",
-            type_pattern="chat.deleted",
+            type_pattern=EventType.CHAT_DELETED,
         ),
         RouteRule(
             destination="events.chat.activity",
             source_pattern="*",
-            type_pattern="chat.message_sent",
+            type_pattern=EventType.CHAT_MESSAGE_SENT,
         ),
         RouteRule(
             destination="events.meeting.lifecycle",
             source_pattern="*",
-            type_pattern=EventType.BOOKING_MEETING_URL_CREATED,
+            type_pattern=EventType.MEETING_URL_CREATED,
         ),
         RouteRule(
             destination="events.meeting.lifecycle",
             source_pattern="*",
-            type_pattern=EventType.BOOKING_MEETING_URL_DELETED,
+            type_pattern=EventType.MEETING_URL_DELETED,
         ),
         RouteRule(
             destination="events.notification.delivery",
             source_pattern="*",
-            type_pattern=EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT,
+            type_pattern=EventType.NOTIFICATION_EMAIL_SENT,
         ),
         RouteRule(
             destination="events.notification.delivery",
             source_pattern="*",
-            type_pattern=EventType.BOOKING_NOTIFICATION_TELEGRAM_MESSAGE_SENT,
+            type_pattern=EventType.NOTIFICATION_TELEGRAM_SENT,
         ),
         RouteRule(
             destination="events.jitsi",
-            source_pattern="jitsi*",
+            source_pattern=f"{SourceType.JITSI}*",
             type_pattern="*",
         ),
         RouteRule(
             destination="events.mail",
-            source_pattern="unisender-go",
-            type_pattern=EventType.UNISENDER_TRANSACTIONAL_STATUS,
+            source_pattern=SourceType.UNISENDER_GO,
+            type_pattern=EventType.UNISENDER_STATUS_CREATED,
         ),
         RouteRule(
             destination="events.chat",
-            source_pattern="getstream",
+            source_pattern=SourceType.GETSTREAM,
             type_pattern="getstream.*",
         ),
     ]
@@ -120,9 +120,6 @@ class Settings(BaseSettings):
     getstream_user_id_encryption_key: str | None = None
 
     postgres_dsn: PostgresDsn = Field(strict=True)
-
-    users_service_url: AnyHttpUrl = Field(strict=True)
-    users_service_api_token: str = Field(strict=True)
 
     @property
     def routing_destinations(self) -> set[str]:

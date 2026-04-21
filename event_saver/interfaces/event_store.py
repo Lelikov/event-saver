@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any, Protocol
 
 
@@ -11,7 +10,7 @@ class IEventStore(Protocol):
         booking_id: str | None,
         event_type: str,
         source: str,
-        occurred_at: datetime,
+        time: Any,
         payload: dict[str, Any],
         idempotency_key: str | None = None,
         trace_id: str | None = None,

@@ -4,10 +4,12 @@ import uuid
 from typing import Any
 
 import structlog
+from event_schemas.types import EventType
 
 from event_saver.application.services.projection_executor import ProjectionExecutor
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
-from event_saver.event_types import EventType
+
+# TODO: Replace with protocol interface from interfaces/ to fix clean architecture violation
 from event_saver.infrastructure.persistence.repositories import BookingRepository, EventRepository
 
 

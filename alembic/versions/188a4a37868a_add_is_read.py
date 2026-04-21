@@ -5,6 +5,7 @@ Revises: 9db481e61abb
 Create Date: 2026-03-09 16:50:36.337562
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

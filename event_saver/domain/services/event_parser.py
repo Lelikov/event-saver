@@ -80,6 +80,12 @@ class EventParser:
 
     @staticmethod
     def _compute_payload_hash(payload: dict[str, Any]) -> str:
-        """Compute MD5 hash of payload for deduplication."""
+        """Compute MD5 hash of payload for deduplication.
+
+        Note: This hash uses ujson.dumps() which may produce different output than
+        PostgreSQL's md5(payload::text). Both event-receiver and event-saver now use
+        this Python-generated hash, so consistency is maintained for new events.
+        Legacy events with Postgres-generated hashes may not dedup correctly.
+        """
         payload_json = ujson.dumps(payload)
         return hashlib.md5(payload_json.encode()).hexdigest()

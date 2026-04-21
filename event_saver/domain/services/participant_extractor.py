@@ -3,6 +3,8 @@
 import uuid
 from typing import Any
 
+from event_schemas.types import RecipientRole
+
 
 class ParticipantExtractor:
     """Extract organizer and client UUIDs from normalized event payloads.
@@ -51,9 +53,9 @@ class ParticipantExtractor:
             else:
                 continue
 
-            if role == "organizer":
+            if role == RecipientRole.ORGANIZER:
                 organizer_user_id = user_id
-            elif role == "client":
+            elif role == RecipientRole.CLIENT:
                 client_user_id = user_id
 
         return organizer_user_id, client_user_id

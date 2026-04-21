@@ -1,6 +1,5 @@
 """Repository for event persistence - pure CRUD operations."""
 
-
 import ujson
 
 from event_saver.domain.models.event import ParsedEvent

@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime
 
 from event_saver.domain.models.booking import BookingData
-from event_saver.event_types import QueueName
 from event_saver.interfaces.sql import ISqlExecutor
 
 
@@ -93,7 +92,7 @@ class BookingRepository:
         queue_name: str,
     ) -> int | None:
         """Get booking ID if exists, respecting queue routing."""
-        if queue_name == QueueName.EVENTS_BOOKING_LIFECYCLE:
+        if queue_name == "events.booking.lifecycle":
             return None
         return await self.find_by_booking_uid(booking_id)
 

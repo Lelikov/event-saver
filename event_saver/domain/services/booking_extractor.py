@@ -1,24 +1,27 @@
 """Domain service for extracting booking data from event payloads."""
 
-from datetime import UTC, datetime
 from typing import Any
 
+from event_schemas.types import EventType
+
 from event_saver.domain.models.booking import BookingData
+from event_saver.utils import parse_iso_datetime
+
+
+_STATUS_BY_EVENT_TYPE: dict[str, str] = {
+    EventType.BOOKING_CREATED: "created",
+    EventType.BOOKING_CANCELLED: "cancelled",
+    # booking.rescheduled: status unchanged, COALESCE preserves existing
+    # booking.reassigned: status unchanged
+    # booking.reminder_sent: not a status change
+}
 
 
 class BookingDataExtractor:
-    """Extract booking information from normalized event payloads.
+    """Extract booking information from event payloads.
 
-    Expects normalized structure from event-receiver:
-    {
-        "normalized": {
-            "booking": {
-                "start_time": "2024-03-01T10:00:00Z",
-                "end_time": "2024-03-01T11:00:00Z",
-                "status": "created"
-            }
-        }
-    }
+    Reads start_time/end_time from the original payload (set by event-receiver)
+    and derives status from the event type.
     """
 
     def extract(
@@ -28,38 +31,15 @@ class BookingDataExtractor:
         event_type: str,
         payload: dict[str, Any],
     ) -> BookingData:
-        """Extract booking data from normalized payload."""
-        normalized = payload.get("normalized")
-        if not isinstance(normalized, dict):
-            return BookingData(booking_id=booking_id)
-
-        booking_data = normalized.get("booking")
-        if not isinstance(booking_data, dict):
-            return BookingData(booking_id=booking_id)
-
-        start_time = booking_data.get("start_time")
-        end_time = booking_data.get("end_time")
-        status = booking_data.get("status")
+        """Extract booking data from payload."""
+        original = payload.get("original", {})
+        start_time = original.get("start_time")
+        end_time = original.get("end_time")
+        status = _STATUS_BY_EVENT_TYPE.get(event_type)
 
         return BookingData(
             booking_id=booking_id,
-            start_time=_parse_datetime(start_time) if start_time else None,
-            end_time=_parse_datetime(end_time) if end_time else None,
-            status=status if isinstance(status, str) else None,
+            start_time=parse_iso_datetime(start_time),
+            end_time=parse_iso_datetime(end_time),
+            status=status,
         )
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    """Parse datetime from string or return existing datetime object."""
-    if isinstance(value, datetime):
-        return value
-
-    if not isinstance(value, str) or not value:
-        return None
-
-    candidate = value.replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(candidate)
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-    except ValueError:
-        return None

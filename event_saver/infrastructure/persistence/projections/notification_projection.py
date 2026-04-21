@@ -1,12 +1,13 @@
 """Projections for notifications (email and telegram)."""
 
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
+from event_schemas.types import EventType, RecipientRole
+
 from event_saver.domain.models.event import ParsedEvent
-from event_saver.event_types import EventType, ParticipantRole
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
+from event_saver.utils import parse_iso_datetime
 
 
 class EmailNotificationProjection(BaseProjection):
@@ -14,8 +15,8 @@ class EmailNotificationProjection(BaseProjection):
 
     def can_handle(self, event: ParsedEvent) -> bool:
         return event.event_type in {
-            EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT,
-            EventType.UNISENDER_TRANSACTIONAL_STATUS,
+            EventType.NOTIFICATION_EMAIL_SENT,
+            EventType.UNISENDER_STATUS_CREATED,
         }
 
     async def handle(
@@ -27,7 +28,7 @@ class EmailNotificationProjection(BaseProjection):
         client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        if event.event_type == EventType.BOOKING_NOTIFICATION_EMAIL_MESSAGE_SENT:
+        if event.event_type == EventType.NOTIFICATION_EMAIL_SENT:
             return self._handle_email_sent(
                 event=event,
                 booking_ref_id=booking_ref_id,
@@ -35,7 +36,7 @@ class EmailNotificationProjection(BaseProjection):
                 client_user_id=client_user_id,
             )
 
-        if event.event_type == EventType.UNISENDER_TRANSACTIONAL_STATUS:
+        if event.event_type == EventType.UNISENDER_STATUS_CREATED:
             return self._handle_email_status(
                 event=event,
                 booking_ref_id=booking_ref_id,
@@ -61,9 +62,9 @@ class EmailNotificationProjection(BaseProjection):
 
         user_id = (
             organizer_user_id
-            if role == ParticipantRole.ORGANIZER
+            if role == RecipientRole.ORGANIZER
             else client_user_id
-            if role == ParticipantRole.CLIENT
+            if role == RecipientRole.CLIENT
             else None
         )
 
@@ -118,7 +119,7 @@ class EmailNotificationProjection(BaseProjection):
         job_id = event_data.get("job_id")
         status = event_data.get("status")
         clicked_url = event_data.get("url")
-        status_event_time = self._parse_iso_datetime(event_data.get("event_time"))
+        status_event_time = parse_iso_datetime(event_data.get("event_time"))
 
         if not isinstance(job_id, str):
             return None
@@ -163,25 +164,12 @@ class EmailNotificationProjection(BaseProjection):
             },
         )
 
-    @staticmethod
-    def _parse_iso_datetime(value: Any) -> datetime | None:
-        if isinstance(value, datetime):
-            return value
-        if not isinstance(value, str) or not value:
-            return None
-        candidate = value.replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(candidate)
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-        except ValueError:
-            return None
-
 
 class TelegramNotificationProjection(BaseProjection):
     """Projects telegram notification events to booking_telegram_notifications table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        return event.event_type == EventType.BOOKING_NOTIFICATION_TELEGRAM_MESSAGE_SENT
+        return event.event_type == EventType.NOTIFICATION_TELEGRAM_SENT
 
     async def handle(
         self,
@@ -196,7 +184,10 @@ class TelegramNotificationProjection(BaseProjection):
         role = users[0].get("role") if isinstance(users, list) and users else None
         trigger_event = event.payload.get("trigger_event")
 
-        user_id = organizer_user_id if role == ParticipantRole.ORGANIZER else client_user_id
+        user_id = organizer_user_id if role == RecipientRole.ORGANIZER else client_user_id
+
+        if user_id is None:
+            return None
 
         return (
             """
@@ -235,7 +226,7 @@ class EmailStatusHistoryProjection(BaseProjection):
     """Projects email status changes to booking_email_status_history table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        return event.event_type == EventType.UNISENDER_TRANSACTIONAL_STATUS
+        return event.event_type == EventType.UNISENDER_STATUS_CREATED
 
     async def handle(
         self,
@@ -252,7 +243,7 @@ class EmailStatusHistoryProjection(BaseProjection):
 
         job_id = event_data.get("job_id")
         status = event_data.get("status")
-        status_event_time = self._parse_iso_datetime(event_data.get("event_time"))
+        status_event_time = parse_iso_datetime(event_data.get("event_time"))
 
         if not isinstance(job_id, str) or not isinstance(status, str):
             return None
@@ -285,16 +276,3 @@ class EmailStatusHistoryProjection(BaseProjection):
                 "source_event_id": event.event_id,
             },
         )
-
-    @staticmethod
-    def _parse_iso_datetime(value: Any) -> datetime | None:
-        if isinstance(value, datetime):
-            return value
-        if not isinstance(value, str) or not value:
-            return None
-        candidate = value.replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(candidate)
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-        except ValueError:
-            return None

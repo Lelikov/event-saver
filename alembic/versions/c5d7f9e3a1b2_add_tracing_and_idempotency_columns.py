@@ -1,4 +1,4 @@
-"""add tracing and idempotency columns
+"""add tracing and idempotency columns.
 
 Revision ID: c5d7f9e3a1b2
 Revises: b0e296cc4b17
@@ -9,6 +9,7 @@ Create Date: 2026-04-03 12:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 

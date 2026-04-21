@@ -5,7 +5,6 @@ from collections.abc import AsyncGenerator
 import structlog
 from dishka import Provider, Scope, provide
 from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, fastapi
-from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -15,11 +14,9 @@ from sqlalchemy.ext.asyncio import (
 
 from event_saver.adapters import (
     BookingTimelineClassifier,
-    CloudEventPublisher,
     RabbitEventConsumerRunner,
     RabbitTopologyManager,
     SqlExecutor,
-    UsersClient,
 )
 from event_saver.config import Settings
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
@@ -41,11 +38,8 @@ from event_saver.infrastructure.persistence.repositories import (
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.projection import IBookingEventClassifier
-from event_saver.interfaces.publisher import ICloudEventPublisher, ITopologyManager
-from event_saver.interfaces.routing import IEventRouter
+from event_saver.interfaces.publisher import ITopologyManager
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
-from event_saver.interfaces.users import IUsersClient
-from event_saver.routing import EventRouter
 
 
 logger = structlog.get_logger(__name__)
@@ -87,25 +81,6 @@ class AppProvider(Provider):
             name=settings.rabbit_exchange,
             type=ExchangeType.TOPIC,
             durable=True,
-        )
-
-    @provide(scope=Scope.APP)
-    def provide_event_router(self, settings: Settings) -> IEventRouter:
-        logger.info("Providing EventRouter")
-        return EventRouter(settings.routing)
-
-    @provide(scope=Scope.APP)
-    def provide_publisher(
-        self,
-        broker: RabbitBroker,
-        exchange: RabbitExchange,
-        event_router: IEventRouter,
-    ) -> ICloudEventPublisher:
-        logger.info("Providing CloudEventPublisher")
-        return CloudEventPublisher(
-            broker=broker,
-            exchange=exchange,
-            router_by_event=event_router,
         )
 
     @provide(scope=Scope.APP)
@@ -281,20 +256,6 @@ class AppProvider(Provider):
             booking_data_extractor=booking_data_extractor,
             projection_handlers=projection_handlers,
             sql_executor_factory=sql_executor_factory,
-        )
-
-    # ========== HTTP / Users Client ==========
-
-    @provide(scope=Scope.APP)
-    async def provide_http_client(self, settings: Settings) -> AsyncGenerator[AsyncClient]:
-        async with AsyncClient(base_url=str(settings.users_service_url)) as client:
-            yield client
-
-    @provide(scope=Scope.APP)
-    def provide_users_client(self, http_client: AsyncClient, settings: Settings) -> IUsersClient:
-        return UsersClient(
-            http_client=http_client,
-            api_token=settings.users_service_api_token,
         )
 
     # ========== Consumer ==========

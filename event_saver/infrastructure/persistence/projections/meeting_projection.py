@@ -3,8 +3,9 @@
 import uuid
 from typing import Any
 
+from event_schemas.types import EventType
+
 from event_saver.domain.models.event import ParsedEvent
-from event_saver.event_types import EventType
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 
 
@@ -12,7 +13,7 @@ class MeetingLinkProjection(BaseProjection):
     """Projects meeting URL creation events to booking_meeting_links table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        return event.event_type == EventType.BOOKING_MEETING_URL_CREATED
+        return event.event_type == EventType.MEETING_URL_CREATED
 
     async def handle(
         self,

@@ -7,7 +7,19 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from event_saver.config import Settings
 from event_saver.db import models  # noqa: F401
-from event_saver.db.base import Base
+from event_saver.db.base import Base as EventSaverBase
+
+
+# event-admin shares the same database as event-saver.
+# Import its models for autogenerate support.
+# Requires: pip install -e ../event-admin
+try:
+    from event_admin.db import models as _ea_models  # noqa: F401
+    from event_admin.db.base import Base as EventAdminBase
+
+    _event_admin_metadata = EventAdminBase.metadata
+except ImportError:
+    _event_admin_metadata = None
 
 
 config = context.config
@@ -21,16 +33,8 @@ config.set_main_option("sqlalchemy.url", str(Settings().postgres_dsn))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+# Combined metadata from event-saver and event-admin for autogenerate support.
+target_metadata = [m for m in [EventSaverBase.metadata, _event_admin_metadata] if m is not None]
 
 
 def run_migrations_offline() -> None:

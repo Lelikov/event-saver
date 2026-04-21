@@ -5,6 +5,8 @@ import uuid
 import structlog
 
 from event_saver.domain.models.event import ParsedEvent
+
+# TODO: Replace with protocol interface from interfaces/ to fix clean architecture violation
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 from event_saver.interfaces.sql import ISqlExecutor
 
@@ -59,8 +61,9 @@ class ProjectionExecutor:
 
             except Exception:
                 logger.exception(
-                    "Projection failed",
-                    handler=handler.__class__.__name__,
-                    event_id=event.event_id,
+                    "projection_failed",
+                    projection_name=handler.__class__.__name__,
                     event_type=event.event_type,
+                    booking_id=event.booking_id,
+                    event_id=event.event_id,
                 )

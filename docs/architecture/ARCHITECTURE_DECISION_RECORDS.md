@@ -1,3 +1,5 @@
+> Last reviewed: 2026-04-20
+
 # Architecture Decision Records (ADR)
 
 Документирование ключевых архитектурных решений в проекте event-saver.

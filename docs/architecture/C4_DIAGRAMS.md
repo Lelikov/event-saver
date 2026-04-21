@@ -1,3 +1,5 @@
+> Last reviewed: 2026-04-20
+
 # C4 Architecture Diagrams
 
 C4 модель документирует архитектуру event-saver на 4 уровнях абстракции.
@@ -98,7 +100,7 @@ C4Component
 
     Container_Boundary(infrastructure_layer, "Infrastructure Layer") {
         Component(event_repo, "EventRepository", "Repository", "CRUD for raw events table")
-        Component(participant_repo, "ParticipantRepository", "Repository", "CRUD for participants table")
+        Component(participant_repo, "ParticipantExtractor", "Domain Service", "Extracts participant UUIDs from payloads (participants table dropped; data in event-users)")
         Component(booking_repo, "BookingRepository", "Repository", "CRUD for bookings table")
 
         Component(meeting_proj, "MeetingLinkProjection", "Handler", "Projects meeting links")
@@ -124,7 +126,7 @@ C4Component
     Rel(ingest_use_case, participant_extractor, "Uses")
     Rel(ingest_use_case, booking_extractor, "Uses")
     Rel(ingest_use_case, event_repo, "Uses")
-    Rel(ingest_use_case, participant_repo, "Uses")
+    Rel(ingest_use_case, participant_repo, "Extracts UUIDs")
     Rel(ingest_use_case, booking_repo, "Uses")
     Rel(ingest_use_case, projection_executor, "Uses")
 
@@ -137,7 +139,7 @@ C4Component
 
     ' Infrastructure depends on database
     Rel(event_repo, postgres, "SQL INSERT")
-    Rel(participant_repo, postgres, "SQL UPSERT")
+    %% participants table dropped (migration 28bba7523965); participant data lives in event-users
     Rel(booking_repo, postgres, "SQL UPSERT")
     Rel(meeting_proj, postgres, "SQL UPSERT")
     Rel(email_proj, postgres, "SQL UPSERT")
@@ -168,7 +170,7 @@ sequenceDiagram
     participant Parser as EventParser
     participant EventRepo as EventRepository
     participant PartExtractor as ParticipantExtractor
-    participant PartRepo as ParticipantRepository
+    participant PartRepo as ParticipantExtractor
     participant BookExtractor as BookingDataExtractor
     participant BookRepo as BookingRepository
     participant ProjExec as ProjectionExecutor
@@ -201,16 +203,9 @@ sequenceDiagram
     end
 
     rect rgb(250, 240, 200)
-        Note over UseCase,DB: Step 3: Process Participants
+        Note over UseCase,PartRepo: Step 3: Extract Participant UUIDs
         UseCase->>PartExtractor: extract(event)
-        PartExtractor-->>UseCase: List[Participant]
-
-        loop For each participant
-            UseCase->>PartRepo: upsert_if_changed(participant)
-            PartRepo->>DB: INSERT ... ON CONFLICT DO UPDATE
-            DB-->>PartRepo: participant_id
-            PartRepo-->>UseCase: participant_id
-        end
+        PartExtractor-->>UseCase: organizer_uid, client_uid (UUIDs from event-users)
     end
 
     rect rgb(250, 220, 220)

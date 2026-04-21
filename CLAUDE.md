@@ -116,9 +116,13 @@ infrastructure/            # Implementation details
 3. **Infrastructure Layer** - Implements interfaces, handles I/O
 4. **Dependency Direction** - Always points inward (infrastructure → application → domain)
 
+### Known Architecture Issues
+
+- **Application imports infrastructure**: `IngestEventUseCase` imports concrete `BookingRepository`/`EventRepository` and `ProjectionExecutor` imports `BaseProjection` from infrastructure. These should be replaced with protocol interfaces in `interfaces/`.
+
 ### Dependency Injection (Dishka)
 
-Dependencies are wired through `ioc_new.py` (NewAppProvider):
+Dependencies are wired through `ioc.py` (AppProvider):
 - `Scope.APP` - Singleton services (settings, domain services, projections)
 - `Scope.REQUEST` - Per-request (repositories with session)
 
@@ -127,7 +131,7 @@ When adding new features:
 2. Business logic in `domain/services/`
 3. Repository in `infrastructure/persistence/repositories/`
 4. Projection handler in `infrastructure/persistence/projections/`
-5. Wire in `ioc_new.py`
+5. Wire in `ioc.py`
 
 ### Event Flow (Refactored Clean Architecture)
 
@@ -226,9 +230,9 @@ The consumer (`adapters/consumer.py`) uses `from_http(headers=..., data=...)` to
 
 ### Projection System
 
-Event projections are built via `IEventProjectionStatementFactory`:
-- Separate builders for different event categories (interactions, notifications, etc.)
-- Builders return lists of SQL statements executed in a transaction
+Event projections are built via `BaseProjection` handlers:
+- Each projection handles specific event types (meetings, notifications, chat, video)
+- Handlers return SQL statement + params, executed by `ProjectionExecutor`
 - Statements are parameterized to prevent SQL injection
 - Projection updates are idempotent where possible
 
@@ -255,7 +259,7 @@ When adding new features:
 ### Entry Points
 - `main.py` - Application entry point, lifespan management
 - `config.py` - Settings and routing rules
-- `ioc_new.py` - **New DI container with clean architecture**
+- `ioc.py` - **DI container with clean architecture**
 
 ### Domain Layer (Business Logic)
 - `domain/models/` - Immutable value objects
@@ -270,10 +274,6 @@ When adding new features:
 - `infrastructure/persistence/projections/` - Independent projection handlers
 - `infrastructure/persistence/event_store_facade.py` - IEventStore adapter
 
-### Legacy (To be removed)
-- `adapters/event_store.py` - Old monolithic event store
-- `ioc.py` - Old DI container
-
 ## Documentation Files
 
 - `PROJECT_CONTEXT.md` - Detailed project context (Russian)
@@ -282,3 +282,52 @@ When adding new features:
 - `REFACTORING_SUMMARY.md` - Complete refactoring summary (before/after)
 - `docs/architecture/C4_DIAGRAMS.md` - C4 architecture diagrams (Context, Container, Component)
 - `docs/architecture/ARCHITECTURE_DECISION_RECORDS.md` - Key architectural decisions (ADRs)
+
+## Service Documentation
+
+- `docs/SERVICE_OVERVIEW.md` — architecture, maturity, known issues
+- `docs/API_CONTRACTS.md` — HTTP endpoints, request/response schemas
+- `docs/DATA_MODEL.md` — database tables, indexes, constraints
+- `docs/DEPENDENCIES.md` — external service dependencies and failure modes
+- `docs/AUDIT.md` — audit findings for this service
+
+Cross-service architecture docs (message contracts, system topology, onboarding) are in `../docs/`.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

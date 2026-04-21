@@ -3,10 +3,20 @@
 import uuid
 from typing import Any
 
+from event_schemas.types import EventType, RecipientRole, SourceType
+
 from event_saver.domain.models.event import ParsedEvent
-from event_saver.event_types import EventType, ParticipantRole, SourceType
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 from event_saver.interfaces.projection import IBookingEventClassifier
+
+
+_BOOKING_CHAT_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        EventType.CHAT_CREATED,
+        EventType.CHAT_DELETED,
+        EventType.CHAT_MESSAGE_SENT,
+    }
+)
 
 
 class ChatEventProjection(BaseProjection):
@@ -16,11 +26,11 @@ class ChatEventProjection(BaseProjection):
         self._classifier = classifier
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        if event.source not in {SourceType.BOOKING, SourceType.GETSTREAM}:
-            return False
         if event.source == SourceType.GETSTREAM:
             return True
-        return ".chat." in event.event_type
+        if event.source == SourceType.BOOKING:
+            return event.event_type in _BOOKING_CHAT_EVENT_TYPES
+        return False
 
     async def handle(
         self,
@@ -105,9 +115,9 @@ class ChatEventProjection(BaseProjection):
         if not isinstance(first_user, dict):
             return None
         role = first_user.get("role")
-        if role == ParticipantRole.ORGANIZER:
+        if role == RecipientRole.ORGANIZER:
             return organizer_user_id
-        if role == ParticipantRole.CLIENT:
+        if role == RecipientRole.CLIENT:
             return client_user_id
         return None
 
@@ -177,8 +187,8 @@ class ChatReadUpdateProjection(BaseProjection):
         if not isinstance(first, dict):
             return None
         role = first.get("role")
-        if role == "organizer":
+        if role == RecipientRole.ORGANIZER:
             return organizer_user_id
-        if role == "client":
+        if role == RecipientRole.CLIENT:
             return client_user_id
         return None

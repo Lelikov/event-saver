@@ -1,10 +1,13 @@
 from typing import Any
 
-from event_saver.event_types import SourceType
+from event_schemas.types import EventType, SourceType
+
 from event_saver.interfaces import IBookingEventClassifier
 
 
-QUEUE_DOMAIN_MAP = {
+_JITSI_PREFIX = "jitsi."
+
+QUEUE_DOMAIN_MAP: dict[str, str] = {
     "events.booking.lifecycle": "booking",
     "events.booking.reminder": "booking",
     "events.chat.lifecycle": "chat",
@@ -14,6 +17,12 @@ QUEUE_DOMAIN_MAP = {
     "events.notification.delivery": "notification",
     "events.mail": "notification",
     "events.jitsi": "video",
+}
+
+_JITSI_EVENT_TYPES: frozenset[str] = frozenset(et.value for et in EventType if et.value.startswith(_JITSI_PREFIX))
+
+_UNISENDER_ACTION_MAP: dict[str, str] = {
+    EventType.UNISENDER_STATUS_CREATED: "transactional.status",
 }
 
 
@@ -49,23 +58,18 @@ class BookingTimelineClassifier(IBookingEventClassifier):
 
     @staticmethod
     def _extract_action_by_event_type(event_type: str) -> str | None:
-        if event_type.startswith("jitsi.events.v1.") and event_type.endswith(".create"):
-            return event_type[len("jitsi.events.v1.") : -len(".create")]
-
-        if ".v1." in event_type and event_type.endswith(".create"):
-            return event_type.split(".v1.", maxsplit=1)[1].rsplit(".create", maxsplit=1)[0]
-
+        if action := _UNISENDER_ACTION_MAP.get(event_type):
+            return action
         return None
 
     @staticmethod
-    def _extract_action_by_queue_chat(event_type: str, source: str, payload: dict[str, Any]) -> str | None:
+    def _extract_action_by_queue_chat(*, payload: dict[str, Any], **_: Any) -> str | None:
         if stream_type := payload.get("type"):
             return stream_type
         return None
 
     @staticmethod
-    def _extract_action_by_queue_jitsi(event_type: str, source: str, payload: dict[str, Any]) -> str | None:
-        del source, payload
-        if event_type.startswith("jitsi.events.v1.") and event_type.endswith(".create"):
-            return event_type[len("jitsi.events.v1.") : -len(".create")]
+    def _extract_action_by_queue_jitsi(*, event_type: str, **_: Any) -> str | None:
+        if event_type in _JITSI_EVENT_TYPES:
+            return event_type.removeprefix(_JITSI_PREFIX)
         return None
