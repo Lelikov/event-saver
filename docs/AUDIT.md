@@ -235,3 +235,22 @@ Based on the audit, the so-called "legacy" files have already been removed. The 
 4. **`REFACTORING_SUMMARY.md`** — The "Удалены файлы" section lists files as deleted with checkmarks; this document can be archived or removed since the refactoring is complete and its "next steps" section suggests unfinished work.
 
 No production code files require deletion. All previously-identified legacy code (`adapters/event_store.py`, the old projections SQL builders, `ioc_old.py`) was already removed prior to this audit.
+
+---
+
+## Resolved Findings
+
+| ID | Finding | Resolution | Date |
+|---|---|---|---|
+| C-5 | SqlExecutor auto-commit breaks atomicity | Was already fixed: execute() has no commit(), single commit in event_store_facade | 2026-04-21 |
+| H-3 | Missing BOOKING_RESCHEDULED in EventType | Was already present in event-schemas types.py | 2026-04-21 |
+| H-1 | Application layer imports concrete infrastructure | Replaced with IEventRepository, IBookingRepository, IProjectionHandler protocols | 2026-04-21 |
+| H-4 | Orphaned IEventProjectionStatementFactory | Removed along with all dead code (publisher, topology manager, unused interfaces) | 2026-04-21 |
+| M-2 | Projection failures silently swallowed | Added re-raise after logging, failures now trigger DLQ | 2026-04-21 |
+| M-1 | Deduplication hash mismatch | Replaced ujson.dumps with json.dumps(sort_keys=True) | 2026-04-21 |
+| M-4 | TelegramNotificationProjection NULL user_id | Was already fixed: null check at line 189 | 2026-04-21 |
+| M-6 | declare=False on queues | Was already changed to declare=True | 2026-04-21 |
+| L-1 | ioc_new.py references | No references found in current CLAUDE.md | 2026-04-21 |
+| L-3 | execute_in_transaction unused | Removed from SqlExecutor and ISqlExecutor | 2026-04-21 |
+| L-4 | EventRouter/CloudEventPublisher wired but unused | Removed publisher.py, routing interfaces, topology manager | 2026-04-21 |
+| L-6 | QUEUES_DIGEST.md incomplete | Synced with actual config.py routing rules | 2026-04-21 |
