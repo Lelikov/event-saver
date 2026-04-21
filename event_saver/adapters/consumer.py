@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -16,17 +15,6 @@ logger = structlog.get_logger(__name__)
 def _extract_extension(event: dict[str, Any], key: str) -> str | None:
     """Extract CloudEvents extension field."""
     return event.get(key)
-
-
-def _parse_occurred_at(time_value: Any) -> datetime:
-    if time_value is None:
-        return datetime.now(UTC)
-
-    if isinstance(time_value, datetime):
-        return time_value if time_value.tzinfo else time_value.replace(tzinfo=UTC)
-
-    parsed = datetime.fromisoformat(str(time_value))
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 class RabbitEventConsumerRunner(IEventConsumerRunner):
@@ -54,6 +42,12 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
                     name=queue_name,
                     durable=True,
                     routing_key=queue_name,
+                    declare=True,
+                    arguments={
+                        "x-max-priority": 10,
+                        "x-dead-letter-exchange": "events.dlx",
+                        "x-dead-letter-routing-key": f"{queue_name}.dlq",
+                    },
                 ),
                 exchange=self._exchange,
             )
@@ -94,7 +88,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         event_type = event["type"]
         source = event["source"]
         booking_id = event.get("booking_id")
-        occurred_at = _parse_occurred_at(event["time"])
+        time = event["time"]
 
         # Extract CloudEvents extensions
         idempotency_key = _extract_extension(event, "idempotencykey")
@@ -116,7 +110,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
                 booking_id=booking_id,
                 event_type=event_type,
                 source=source,
-                occurred_at=occurred_at,
+                time=time,
                 payload=event.data or {},
                 idempotency_key=idempotency_key,
                 trace_id=trace_id,
