@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from event_saver.application.services.projection_executor import ProjectionExecutor
 from event_saver.application.use_cases.ingest_event import IngestEventUseCase
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
-from event_saver.infrastructure.persistence.projections.base import BaseProjection
 from event_saver.infrastructure.persistence.repositories import BookingRepository, EventRepository
 from event_saver.interfaces.event_store import IEventStore
+from event_saver.interfaces.projection_handler import IProjectionHandler
 from event_saver.interfaces.sql import ISqlExecutorFactory
 
 
@@ -23,7 +23,7 @@ class CleanArchitectureEventStore(IEventStore):
         event_parser: EventParser,
         participant_extractor: ParticipantExtractor,
         booking_data_extractor: BookingDataExtractor,
-        projection_handlers: list[BaseProjection],
+        projection_handlers: list[IProjectionHandler],
         sql_executor_factory: ISqlExecutorFactory,
     ) -> None:
         self._sessionmaker = sessionmaker

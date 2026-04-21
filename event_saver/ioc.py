@@ -30,7 +30,6 @@ from event_saver.infrastructure.persistence.projections import (
     TelegramNotificationProjection,
     VideoEventProjection,
 )
-from event_saver.infrastructure.persistence.projections.base import BaseProjection
 from event_saver.infrastructure.persistence.repositories import (
     BookingRepository,
     EventRepository,
@@ -38,6 +37,7 @@ from event_saver.infrastructure.persistence.repositories import (
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.projection import IBookingEventClassifier
+from event_saver.interfaces.projection_handler import IProjectionHandler
 from event_saver.interfaces.publisher import ITopologyManager
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 
@@ -143,7 +143,7 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def provide_sql_executor_factory(self) -> ISqlExecutorFactory:
-        """Factory for creating SQL executors."""
+        """Provide factory for creating SQL executors."""
 
         def factory(session: AsyncSession) -> ISqlExecutor:
             return SqlExecutor(session)
@@ -221,7 +221,7 @@ class AppProvider(Provider):
         chat_event: ChatEventProjection,
         chat_read_update: ChatReadUpdateProjection,
         video_event: VideoEventProjection,
-    ) -> list[BaseProjection]:
+    ) -> list[IProjectionHandler]:
         """Collect all projection handlers into a list."""
         return [
             meeting_link,
@@ -242,10 +242,10 @@ class AppProvider(Provider):
         event_parser: EventParser,
         participant_extractor: ParticipantExtractor,
         booking_data_extractor: BookingDataExtractor,
-        projection_handlers: list[BaseProjection],
+        projection_handlers: list[IProjectionHandler],
         sql_executor_factory: ISqlExecutorFactory,
     ) -> IEventStore:
-        """Provides event store that uses clean architecture.
+        """Provide event store that uses clean architecture.
 
         This facade creates use case for each save_event call.
         """
