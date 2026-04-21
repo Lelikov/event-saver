@@ -8,9 +8,7 @@ from event_schemas.types import EventType
 
 from event_saver.application.services.projection_executor import ProjectionExecutor
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
-
-# TODO: Replace with protocol interface from interfaces/ to fix clean architecture violation
-from event_saver.infrastructure.persistence.repositories import BookingRepository, EventRepository
+from event_saver.interfaces.repositories import IBookingRepository, IEventRepository
 
 
 logger = structlog.get_logger(__name__)
@@ -25,8 +23,8 @@ class IngestEventUseCase:
         event_parser: EventParser,
         participant_extractor: ParticipantExtractor,
         booking_data_extractor: BookingDataExtractor,
-        event_repository: EventRepository,
-        booking_repository: BookingRepository,
+        event_repository: IEventRepository,
+        booking_repository: IBookingRepository,
         projection_executor: ProjectionExecutor,
     ) -> None:
         self._event_parser = event_parser
