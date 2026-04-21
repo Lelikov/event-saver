@@ -1,10 +1,9 @@
 """Domain service for parsing events into domain models."""
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from typing import Any
-
-import ujson
 
 from event_saver.domain.models.event import ParsedEvent, RawEventData
 
@@ -82,10 +81,9 @@ class EventParser:
     def _compute_payload_hash(payload: dict[str, Any]) -> str:
         """Compute MD5 hash of payload for deduplication.
 
-        Note: This hash uses ujson.dumps() which may produce different output than
-        PostgreSQL's md5(payload::text). Both event-receiver and event-saver now use
-        this Python-generated hash, so consistency is maintained for new events.
-        Legacy events with Postgres-generated hashes may not dedup correctly.
+        Uses json.dumps(sort_keys=True, ensure_ascii=False) to ensure deterministic
+        serialization across all Python instances. This guarantees the same hash
+        regardless of payload key ordering or serialization library quirks.
         """
-        payload_json = ujson.dumps(payload)
-        return hashlib.md5(payload_json.encode()).hexdigest()
+        payload_json = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        return hashlib.md5(payload_json.encode()).hexdigest()  # noqa: S324
