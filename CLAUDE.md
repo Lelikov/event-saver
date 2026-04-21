@@ -331,3 +331,12 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
+
+## Documentation Requirements
+
+All code changes MUST include corresponding documentation updates:
+- New features or architectural changes → update relevant `docs/` files
+- New event types or queue changes → update `QUEUES_DIGEST.md` and `EVENTS_DIGEST.md`
+- Changed interfaces or DI wiring → update Architecture section in this file
+- Bug fixes for audit findings → update `docs/AUDIT.md` to close the finding
+- Migration changes → update `docs/DATA_MODEL.md`
