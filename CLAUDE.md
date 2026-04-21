@@ -116,9 +116,11 @@ infrastructure/            # Implementation details
 3. **Infrastructure Layer** - Implements interfaces, handles I/O
 4. **Dependency Direction** - Always points inward (infrastructure → application → domain)
 
-### Known Architecture Issues
+### Architecture Notes
 
-- **Application imports infrastructure**: `IngestEventUseCase` imports concrete `BookingRepository`/`EventRepository` and `ProjectionExecutor` imports `BaseProjection` from infrastructure. These should be replaced with protocol interfaces in `interfaces/`.
+- Application layer depends only on protocols from `interfaces/` — no direct infrastructure imports
+- `IEventRepository`, `IBookingRepository` — repository abstractions
+- `IProjectionHandler` — projection handler abstraction (replaces direct `BaseProjection` import)
 
 ### Dependency Injection (Dishka)
 
