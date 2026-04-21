@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import (
 from event_saver.adapters import (
     BookingTimelineClassifier,
     RabbitEventConsumerRunner,
-    RabbitTopologyManager,
     SqlExecutor,
 )
 from event_saver.config import Settings
@@ -38,7 +37,6 @@ from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.projection import IBookingEventClassifier
 from event_saver.interfaces.projection_handler import IProjectionHandler
-from event_saver.interfaces.publisher import ITopologyManager
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 
 
@@ -81,23 +79,6 @@ class AppProvider(Provider):
             name=settings.rabbit_exchange,
             type=ExchangeType.TOPIC,
             durable=True,
-        )
-
-    @provide(scope=Scope.APP)
-    def provide_topology_manager(
-        self,
-        settings: Settings,
-        broker: RabbitBroker,
-        exchange: RabbitExchange,
-    ) -> ITopologyManager:
-        logger.info(
-            "Providing RabbitTopologyManager",
-            topology_queue_count=len(settings.topology_queues),
-        )
-        return RabbitTopologyManager(
-            broker=broker,
-            exchange=exchange,
-            topology_queues=settings.topology_queues,
         )
 
     # ========== Database Infrastructure ==========
