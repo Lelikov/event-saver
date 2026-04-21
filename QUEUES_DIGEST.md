@@ -6,14 +6,14 @@
 
 | Queue | Source Pattern | Type Pattern | Events |
 |---|---|---|---|
-| `events.booking.lifecycle` | `*` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` | lifecycle бронирования |
+| `events.booking.lifecycle` | `*` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` / `booking.reminder_sent` | lifecycle бронирования |
 | `events.booking.reminder` | `*` | `booking.reminder_sent` | отправка напоминаний |
 | `events.chat.lifecycle` | `*` | `chat.created` / `chat.deleted` | lifecycle чата |
 | `events.chat.activity` | `*` | `chat.message_sent` | активность в чате |
 | `events.meeting.lifecycle` | `*` | `meeting.url_created` / `meeting.url_deleted` | lifecycle meeting URL |
 | `events.notification.delivery` | `*` | `notification.email.message_sent` / `notification.telegram.message_sent` | отправка уведомлений |
 | `events.jitsi` | `jitsi*` | `*` | все Jitsi-события |
-| `events.mail` | `unisender-go` | `unisender.*` | события UniSender |
+| `events.mail` | `unisender-go` | `unisender.status.created` | события UniSender |
 | `events.chat` | `getstream` | `getstream.*` | события GetStream |
 | `events.unrouted` | fallback | fallback | все события без match по rules |
 
@@ -24,6 +24,7 @@
 - `booking.rescheduled`
 - `booking.reassigned`
 - `booking.cancelled`
+- `booking.reminder_sent`
 
 ## events.booking.reminder
 
@@ -63,7 +64,7 @@
 
 События UniSender:
 - `source_pattern = "unisender-go"`
-- `type_pattern = "unisender.*"`
+- `type_pattern = "unisender.status.created"`
 
 ## events.chat
 
