@@ -25,6 +25,7 @@ from event_saver.infrastructure.persistence.projections import (
     ChatReadUpdateProjection,
     EmailNotificationProjection,
     EmailStatusHistoryProjection,
+    LifecycleProjection,
     MeetingLinkProjection,
     TelegramNotificationProjection,
     VideoEventProjection,
@@ -193,6 +194,10 @@ class AppProvider(Provider):
         return VideoEventProjection(classifier=classifier)
 
     @provide(scope=Scope.APP)
+    def provide_lifecycle_projection(self) -> LifecycleProjection:
+        return LifecycleProjection()
+
+    @provide(scope=Scope.APP)
     def provide_projection_handlers(
         self,
         meeting_link: MeetingLinkProjection,
@@ -202,6 +207,7 @@ class AppProvider(Provider):
         chat_event: ChatEventProjection,
         chat_read_update: ChatReadUpdateProjection,
         video_event: VideoEventProjection,
+        lifecycle: LifecycleProjection,
     ) -> list[IProjectionHandler]:
         """Collect all projection handlers into a list."""
         return [
@@ -212,6 +218,7 @@ class AppProvider(Provider):
             chat_event,
             chat_read_update,
             video_event,
+            lifecycle,
         ]
 
     # ========== Event Store (Facade) ==========

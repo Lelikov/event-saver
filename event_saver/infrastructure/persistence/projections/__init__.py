@@ -3,6 +3,7 @@ from event_saver.infrastructure.persistence.projections.chat_projection import (
     ChatEventProjection,
     ChatReadUpdateProjection,
 )
+from event_saver.infrastructure.persistence.projections.lifecycle_projection import LifecycleProjection
 from event_saver.infrastructure.persistence.projections.meeting_projection import MeetingLinkProjection
 from event_saver.infrastructure.persistence.projections.notification_projection import (
     EmailNotificationProjection,
@@ -18,6 +19,7 @@ __all__ = [
     "ChatReadUpdateProjection",
     "EmailNotificationProjection",
     "EmailStatusHistoryProjection",
+    "LifecycleProjection",
     "MeetingLinkProjection",
     "TelegramNotificationProjection",
     "VideoEventProjection",
