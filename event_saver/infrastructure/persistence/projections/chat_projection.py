@@ -92,10 +92,11 @@ class ChatEventProjection(BaseProjection):
 
     @staticmethod
     def _extract_message_id(payload: dict[str, Any]) -> str | None:
-        message_id = payload.get("message_id")
+        original = payload.get("original", payload)
+        message_id = original.get("message_id")
         if isinstance(message_id, str):
             return message_id
-        message = payload.get("message")
+        message = original.get("message")
         if isinstance(message, dict):
             msg_id = message.get("id")
             if isinstance(msg_id, str):
@@ -108,13 +109,16 @@ class ChatEventProjection(BaseProjection):
         organizer_user_id: uuid.UUID | None,
         client_user_id: uuid.UUID | None,
     ) -> uuid.UUID | None:
-        users = payload.get("users")
-        if not isinstance(users, list) or not users:
+        normalized = payload.get("normalized")
+        if not isinstance(normalized, dict):
             return None
-        first_user = users[0]
-        if not isinstance(first_user, dict):
+        participants = normalized.get("participants", [])
+        if not isinstance(participants, list) or not participants:
             return None
-        role = first_user.get("role")
+        first = participants[0]
+        if not isinstance(first, dict):
+            return None
+        role = first.get("role")
         if role == RecipientRole.ORGANIZER:
             return organizer_user_id
         if role == RecipientRole.CLIENT:
@@ -123,7 +127,8 @@ class ChatEventProjection(BaseProjection):
 
     @staticmethod
     def _extract_text_preview(payload: dict[str, Any]) -> str | None:
-        message = payload.get("message")
+        original = payload.get("original", payload)
+        message = original.get("message")
         if not isinstance(message, dict):
             return None
         text = message.get("text")
@@ -166,7 +171,7 @@ class ChatReadUpdateProjection(BaseProjection):
             {
                 "booking_ref_id": booking_ref_id,
                 "reader_user_id": str(reader_user_id),
-                "last_read_message_id": event.payload.get("last_read_message_id"),
+                "last_read_message_id": event.payload.get("original", event.payload).get("last_read_message_id"),
                 "read_occurred_at": event.occurred_at,
             },
         )

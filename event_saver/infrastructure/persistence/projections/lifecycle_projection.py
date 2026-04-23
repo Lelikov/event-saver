@@ -9,6 +9,7 @@ from event_schemas.types import EventType
 from event_saver.domain.models.event import ParsedEvent
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 
+
 _LIFECYCLE_TYPES = {
     EventType.BOOKING_CREATED,
     EventType.BOOKING_RESCHEDULED,
@@ -51,14 +52,16 @@ class LifecycleProjection(BaseProjection):
                 booking_ref_id,
                 raw_event_id,
                 action,
-                actor_user_id,
+                organizer_user_id,
+                client_user_id,
                 details,
                 occurred_at
             ) values (
                 :booking_ref_id,
                 :raw_event_id,
                 :action,
-                :actor_user_id,
+                :organizer_user_id,
+                :client_user_id,
                 :details,
                 :occurred_at
             )
@@ -68,7 +71,8 @@ class LifecycleProjection(BaseProjection):
                 "booking_ref_id": booking_ref_id,
                 "raw_event_id": event.event_id,
                 "action": action,
-                "actor_user_id": str(organizer_user_id) if organizer_user_id else None,
+                "organizer_user_id": str(organizer_user_id) if organizer_user_id else None,
+                "client_user_id": str(client_user_id) if client_user_id else None,
                 "details": json.dumps(details) if details else None,
                 "occurred_at": event.occurred_at,
             },
@@ -82,12 +86,7 @@ class LifecycleProjection(BaseProjection):
             return _pick(original, "start_time", "end_time")
 
         if event.event_type == EventType.BOOKING_RESCHEDULED:
-            details = _pick(original, "start_time", "end_time")
-            previous = original.get("previous_booking", {})
-            prev_start = previous.get("start_time")
-            if prev_start is not None:
-                details["previous_start_time"] = prev_start
-            return details
+            return _pick(original, "start_time", "end_time", "previous_booking.start_time")
 
         if event.event_type == EventType.BOOKING_REASSIGNED:
             normalized = event.payload.get("normalized", {})
@@ -103,6 +102,7 @@ class LifecycleProjection(BaseProjection):
         return None
 
 
-def _pick(source: dict[str, Any], *keys: str) -> dict[str, Any]:
-    """Pick specified keys from a dictionary, omitting missing keys."""
-    return {k: source[k] for k in keys if k in source}
+def _pick(source: dict[str, Any], *keys: str) -> dict[str, Any] | None:
+    """Pick specified keys from a dictionary, omitting missing or None-valued keys."""
+    result = {k: source[k] for k in keys if k in source and source[k] is not None}
+    return result or None
