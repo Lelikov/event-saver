@@ -29,7 +29,6 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 |---|---|---|
 | **RabbitMQ** | Message broker (consumer) | `RABBIT_URL` (AMQP), topic exchange `events` |
 | **PostgreSQL** | Persistent store (owner/writer) | `POSTGRES_DSN` (asyncpg) |
-| **event-users** | HTTP API for user lookups (proxy endpoint) | `USERS_SERVICE_URL` + `USERS_SERVICE_API_TOKEN` |
 
 ## Key Environment Variables
 
@@ -40,8 +39,6 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 | `RABBIT_EXCHANGE` | No | `events` | Exchange name |
 | `DEFAULT_RABBIT_DESTINATION` | No | `events.unrouted` | Fallback queue |
 | `RABBIT_TOPOLOGY_QUEUES` | No | (derived from routing rules) | Explicit queue list |
-| `USERS_SERVICE_URL` | Yes | - | event-users base URL |
-| `USERS_SERVICE_API_TOKEN` | Yes | - | Bearer token for event-users |
 | `GETSTREAM_USER_ID_ENCRYPTION_KEY` | No | - | Decrypt GetStream user IDs |
 | `DEBUG` | No | `False` | Enable debug mode |
 | `LOG_LEVEL` | No | `INFO` | Structlog level |
@@ -81,7 +78,7 @@ graph TB
         FACADE["persistence/event_store_facade.py<br/>CleanArchitectureEventStore"]
         ER["repositories/event_repository.py<br/>EventRepository"]
         BR["repositories/booking_repository.py<br/>BookingRepository"]
-        PROJ["projections/<br/>Meeting, Email, Telegram,<br/>EmailStatusHistory, Chat,<br/>ChatReadUpdate, Video"]
+        PROJ["projections/<br/>Meeting, Email, Telegram,<br/>EmailStatusHistory, Chat,<br/>ChatReadUpdate, Video, Lifecycle"]
         SQL["adapters/sql.py<br/>SqlExecutor"]
     end
 
@@ -112,7 +109,7 @@ graph TB
 | Domain services | `domain/services/event_parser.py`, `participant_extractor.py`, `booking_extractor.py` | 145 |
 | Application | `application/use_cases/ingest_event.py`, `application/services/projection_executor.py` | 200 |
 | Infrastructure | `infrastructure/persistence/` (facade, repositories, projections) | ~1300 |
-| Adapters | `adapters/consumer.py`, `adapters/sql.py`, `adapters/publisher.py`, `adapters/users_client.py` | ~250 |
+| Adapters | `adapters/consumer.py`, `adapters/sql.py` | ~150 |
 | Interfaces | `interfaces/*.py` (7 protocol files) | ~100 |
 | DI/Config | `ioc.py`, `config.py`, `routing.py`, `event_types.py` | ~280 |
 

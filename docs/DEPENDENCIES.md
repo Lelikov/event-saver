@@ -23,22 +23,11 @@ Reference: `ioc.py:73-90`, `adapters/consumer.py:47-75`
 | Connection | `POSTGRES_DSN` env var |
 | Pool | size=10, max_overflow=20, pool_pre_ping=True |
 | Role | **Schema owner** and exclusive writer |
-| Tables | 9 tables (see DATA_MODEL.md) |
-| Migrations | Alembic (`alembic/versions/`, 15 revisions) |
+| Tables | 10 tables (see DATA_MODEL.md) |
+| Migrations | Alembic (`alembic/versions/`, 17 revisions) |
 | Failure mode | Event processing halts; messages nacked and routed to DLX |
 
 Reference: `ioc.py:130-155`
-
-### event-users (HTTP service)
-
-| Aspect | Detail |
-|---|---|
-| Protocol | HTTP (httpx AsyncClient) |
-| Connection | `USERS_SERVICE_URL` + `USERS_SERVICE_API_TOKEN` |
-| Role | Proxied user lookups (non-critical to core event flow) |
-| Failure mode | Proxy endpoints return HTTP errors; core event ingestion unaffected |
-
-Reference: `ioc.py:288-298`, `main.py:55-77`
 
 ---
 
@@ -75,7 +64,6 @@ graph LR
     subgraph External
         RMQ[RabbitMQ<br/>Topic Exchange]
         PG[(PostgreSQL<br/>events DB)]
-        EU[event-users<br/>HTTP API]
     end
 
     subgraph Core
@@ -89,7 +77,6 @@ graph LR
 
     RMQ -->|consume| ES
     ES -->|write| PG
-    ES -.->|proxy /api/users| EU
     PG -.->|read-only| EA
     EA --> EAF
 
@@ -107,7 +94,6 @@ graph LR
 | Events accumulate in RabbitMQ queues | RabbitMQ | Medium | Messages preserved (durable queues); auto-recovers on restart |
 | No new projections written | PostgreSQL / event-admin | High | Admin UI shows stale data; no data loss |
 | No new bookings tracked | event-admin-frontend | High | Bookings list stops updating |
-| Proxy user endpoints fail | event-admin-frontend (if using event-saver proxy) | Low | Frontend should fall back to event-users directly |
 | No organizer history recorded | Audit trail | Medium | History gap; cannot be retroactively filled without replay |
 | DLX fills up | RabbitMQ | Low | If event-saver is down long, DLX queues grow; monitor disk |
 

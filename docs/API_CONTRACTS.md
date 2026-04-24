@@ -2,16 +2,7 @@
 
 ## HTTP API
 
-**event-saver exposes no public HTTP API for event ingestion or querying.** Its only HTTP endpoints are:
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/api/users` | GET | Proxy to event-users (list users) |
-| `/api/users/{user_id}` | GET | Proxy to event-users (get user) |
-
-Reference: `event_saver/main.py:55-77`
-
-These proxy endpoints exist for legacy compatibility and forward requests to `event-users` via `IUsersClient`.
+**event-saver exposes no public HTTP API.** All processing is driven by RabbitMQ message consumption. There are no HTTP endpoints for event ingestion, querying, or proxying.
 
 ---
 
@@ -48,15 +39,19 @@ Reference: `config.py:8-90`, `routing.py:30-68`
 
 ### Queue Declaration
 
-Queues are subscribed with `declare=False` and the following arguments:
+Queues are subscribed with `declare=True` and the following arguments:
 
 ```python
 RabbitQueue(
     name=queue_name,
     durable=True,
     routing_key=queue_name,
-    declare=False,
-    arguments={"x-dead-letter-exchange": "events.dlx"},
+    declare=True,
+    arguments={
+        "x-dead-letter-exchange": "events.dlx",
+        "x-dead-letter-routing-key": queue_name,
+        "x-max-priority": 10,
+    },
 )
 ```
 
@@ -135,7 +130,7 @@ ON CONFLICT (booking_id, event_type, source, hash) DO NOTHING
 RETURNING event_id
 ```
 
-The hash is computed as `md5(ujson.dumps(payload).encode()).hexdigest()` in Python.
+The hash is computed as `hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()` in Python (`json` standard library with `sort_keys=True` for stable key ordering).
 
 Reference: `infrastructure/persistence/repositories/event_repository.py:77-120`, `domain/services/event_parser.py:82-85`
 
@@ -153,6 +148,3 @@ flowchart TD
     F -->|No row| H[Duplicate - skip processing]
 ```
 
-### Known Issue
-
-The Python-side hash (`md5(ujson.dumps(payload))`) may differ from PostgreSQL's `md5(payload::text)` due to JSON serialization differences (key ordering, float formatting). This affects only the legacy fallback path for events without an idempotency key.

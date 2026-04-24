@@ -116,12 +116,26 @@ erDiagram
         jsonb payload "not null, default {}"
     }
 
+    booking_lifecycle_events {
+        bigserial id PK
+        bigint booking_ref_id "not null, FK bookings.id"
+        text raw_event_id "not null, FK events.event_id"
+        text action "not null"
+        uuid organizer_user_id "nullable"
+        uuid client_user_id "nullable"
+        jsonb details "nullable"
+        timestamptz occurred_at "not null"
+        timestamptz created_at "not null, default now()"
+    }
+
     bookings ||--o{ booking_organizer_history : "has history"
     bookings ||--o{ booking_meeting_links : "has links"
     bookings ||--o{ booking_email_notifications : "has emails"
     bookings ||--o{ booking_telegram_notifications : "has telegrams"
     bookings ||--o{ booking_chat_events : "has chats"
     bookings ||--o{ booking_video_events : "has video"
+    bookings ||--o{ booking_lifecycle_events : "has lifecycle"
+    events ||--o{ booking_lifecycle_events : "sourced by"
     booking_email_notifications ||--o{ booking_email_status_history : "has status history"
 ```
 
@@ -300,6 +314,24 @@ Reference: `db/models.py:215-244`
 
 Reference: `db/models.py:247-268`
 
+### `booking_lifecycle_events` - Booking Lifecycle Audit Log
+
+Records every lifecycle action (created, cancelled, rescheduled, reassigned) as an immutable append-only log linked to the raw source event.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | bigserial | PK |
+| `booking_ref_id` | bigint | not null (FK to `bookings.id`) |
+| `raw_event_id` | text | not null (FK to `events.event_id`) |
+| `action` | text | not null |
+| `organizer_user_id` | uuid | nullable |
+| `client_user_id` | uuid | nullable |
+| `details` | jsonb | nullable |
+| `occurred_at` | timestamptz | not null |
+| `created_at` | timestamptz | not null, default `now()` |
+
+**Indexes:** `ix_ble_booking_ref_occurred_desc` on `(booking_ref_id, occurred_at DESC)`
+
 ---
 
 ## Business Invariants at DB Level
@@ -335,5 +367,7 @@ Ordered by dependency (each revision depends on the one above):
 | 13 | `89ec847d44a9` | Merge event-admin and main heads |
 | 14 | `f3a9b2c1d4e5` | Add `user_id` to participants / `booking_email_status_history` table |
 | 15 | `28bba7523965` | Remove `participants` table, add UUID columns to bookings |
+| 16 | `ca7326cf2ec5` | Create `booking_lifecycle_events` table |
+| 17 | `2af87f34c2ff` | Add indexes to `booking_lifecycle_events` |
 
 Reference: `alembic/versions/`
