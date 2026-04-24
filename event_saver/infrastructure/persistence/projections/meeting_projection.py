@@ -10,10 +10,10 @@ from event_saver.infrastructure.persistence.projections.base import BaseProjecti
 
 
 class MeetingLinkProjection(BaseProjection):
-    """Projects meeting URL creation events to booking_meeting_links table."""
+    """Projects meeting URL creation/deletion events to booking_meeting_links table."""
 
     def can_handle(self, event: ParsedEvent) -> bool:
-        return event.event_type == EventType.MEETING_URL_CREATED
+        return event.event_type in {EventType.MEETING_URL_CREATED, EventType.MEETING_URL_DELETED}
 
     async def handle(
         self,
@@ -24,11 +24,24 @@ class MeetingLinkProjection(BaseProjection):
         client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        meeting_url = event.payload.get("meeting_url")
         user_id = organizer_user_id or client_user_id
-
         if user_id is None:
             return None
+
+        if event.event_type == EventType.MEETING_URL_DELETED:
+            return self._handle_deleted(booking_ref_id=booking_ref_id, user_id=user_id)
+
+        return self._handle_created(booking_ref_id=booking_ref_id, user_id=user_id, event=event)
+
+    @staticmethod
+    def _handle_created(
+        *,
+        booking_ref_id: int,
+        user_id: uuid.UUID,
+        event: ParsedEvent,
+    ) -> tuple[str, dict[str, Any]] | None:
+        original = event.payload.get("original", event.payload)
+        meeting_url = original.get("meeting_url")
 
         return (
             """
@@ -61,5 +74,23 @@ class MeetingLinkProjection(BaseProjection):
                 "meeting_url": meeting_url,
                 "source_event_id": event.event_id,
                 "occurred_at": event.occurred_at,
+            },
+        )
+
+    @staticmethod
+    def _handle_deleted(
+        *,
+        booking_ref_id: int,
+        user_id: uuid.UUID,
+    ) -> tuple[str, dict[str, Any]] | None:
+        return (
+            """
+            delete from booking_meeting_links
+            where booking_ref_id = :booking_ref_id
+              and user_id = :user_id
+            """,
+            {
+                "booking_ref_id": booking_ref_id,
+                "user_id": str(user_id),
             },
         )

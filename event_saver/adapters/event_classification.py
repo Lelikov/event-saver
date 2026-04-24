@@ -53,7 +53,8 @@ class BookingTimelineClassifier(IBookingEventClassifier):
     @staticmethod
     def _extract_action_by_source(source: str, payload: dict[str, Any]) -> str | None:
         if source == SourceType.GETSTREAM:
-            return payload.get("type")
+            original = payload.get("original", payload)
+            return original.get("type")
         return None
 
     @staticmethod
@@ -64,7 +65,8 @@ class BookingTimelineClassifier(IBookingEventClassifier):
 
     @staticmethod
     def _extract_action_by_queue_chat(*, payload: dict[str, Any], **_: Any) -> str | None:
-        if stream_type := payload.get("type"):
+        original = payload.get("original", payload)
+        if stream_type := original.get("type"):
             return stream_type
         return None
 

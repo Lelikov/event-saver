@@ -52,13 +52,14 @@ class EmailNotificationProjection(BaseProjection):
         organizer_user_id: uuid.UUID | None,
         client_user_id: uuid.UUID | None,
     ) -> tuple[str, dict[str, Any]] | None:
-        job_id = event.payload.get("job_id")
+        original = event.payload.get("original", event.payload)
+        job_id = original.get("job_id")
         if not isinstance(job_id, str):
             return None
 
-        users = event.payload.get("users")
+        users = original.get("users")
         role = users[0].get("role") if isinstance(users, list) and users else None
-        trigger_event = event.payload.get("trigger_event")
+        trigger_event = original.get("trigger_event")
 
         user_id = (
             organizer_user_id
@@ -112,7 +113,8 @@ class EmailNotificationProjection(BaseProjection):
         event: ParsedEvent,
         booking_ref_id: int,
     ) -> tuple[str, dict[str, Any]] | None:
-        event_data = event.payload.get("event_data")
+        original = event.payload.get("original", event.payload)
+        event_data = original.get("event_data")
         if not isinstance(event_data, dict):
             return None
 
@@ -180,9 +182,10 @@ class TelegramNotificationProjection(BaseProjection):
         client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        users = event.payload.get("users")
+        original = event.payload.get("original", event.payload)
+        users = original.get("users")
         role = users[0].get("role") if isinstance(users, list) and users else None
-        trigger_event = event.payload.get("trigger_event")
+        trigger_event = original.get("trigger_event")
 
         user_id = organizer_user_id if role == RecipientRole.ORGANIZER else client_user_id
 
@@ -195,28 +198,22 @@ class TelegramNotificationProjection(BaseProjection):
                 booking_ref_id,
                 user_id,
                 trigger_event,
-                sent_event_id,
-                sent_at,
-                updated_at
+                source_event_id,
+                sent_at
             ) values (
                 :booking_ref_id,
                 :user_id,
                 :trigger_event,
-                :sent_event_id,
-                :sent_at,
-                now()
+                :source_event_id,
+                :sent_at
             )
-            on conflict (booking_ref_id, user_id, trigger_event) do update
-            set
-                sent_event_id = excluded.sent_event_id,
-                sent_at = excluded.sent_at,
-                updated_at = now()
+            on conflict (source_event_id) do nothing
             """,
             {
                 "booking_ref_id": booking_ref_id,
                 "user_id": str(user_id) if user_id is not None else None,
                 "trigger_event": trigger_event if isinstance(trigger_event, str) else None,
-                "sent_event_id": event.event_id,
+                "source_event_id": event.event_id,
                 "sent_at": event.occurred_at,
             },
         )
@@ -237,7 +234,8 @@ class EmailStatusHistoryProjection(BaseProjection):
         client_user_id: uuid.UUID | None,
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
-        event_data = event.payload.get("event_data")
+        original = event.payload.get("original", event.payload)
+        event_data = original.get("event_data")
         if not isinstance(event_data, dict):
             return None
 
@@ -248,31 +246,27 @@ class EmailStatusHistoryProjection(BaseProjection):
         if not isinstance(job_id, str) or not isinstance(status, str):
             return None
 
+        clicked_url = event_data.get("url")
+
         return (
             """
             insert into booking_email_status_history (
-                job_id,
+                notification_ref_id,
                 status,
                 status_event_time,
-                source_event_id,
-                updated_at
-            ) values (
-                :job_id,
-                :status,
-                :status_event_time,
-                :source_event_id,
-                now()
+                clicked_url,
+                source_event_id
             )
-            on conflict (job_id, status) do update
-            set
-                status_event_time = excluded.status_event_time,
-                source_event_id = excluded.source_event_id,
-                updated_at = now()
+            select ben.id, :status, :status_event_time, :clicked_url, :source_event_id
+            from booking_email_notifications ben
+            where ben.job_id = :job_id
+            on conflict (source_event_id) do nothing
             """,
             {
                 "job_id": job_id,
                 "status": status,
                 "status_event_time": status_event_time,
+                "clicked_url": clicked_url if isinstance(clicked_url, str) else None,
                 "source_event_id": event.event_id,
             },
         )

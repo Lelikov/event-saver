@@ -120,14 +120,24 @@ graph TB
 
 Source: `docs/audit/raw/event-saver_audit.md`
 
-| Severity | Issue | Location |
-|---|---|---|
-| HIGH | No DLQ configured; failed messages lack retry/dead-letter path | `adapters/consumer.py:52-59` (has `x-dead-letter-exchange` arg but no matching exchange/queue declaration) |
-| HIGH | Application layer imports concrete infrastructure classes | `application/use_cases/ingest_event.py:13`, `application/services/projection_executor.py:10` |
-| MEDIUM | Projection failures are silently swallowed (logged, not re-raised) | `application/services/projection_executor.py:62-68` |
-| MEDIUM | Deduplication hash computed with `ujson.dumps` (Python) vs. `md5(payload::text)` (Postgres) mismatch for legacy path | `domain/services/event_parser.py:82-85` |
-| MEDIUM | `BookingDataExtractor` only maps two event types to status | `domain/services/booking_extractor.py:9-12` |
-| MEDIUM | `declare=False` on queues means service crashes if queues do not pre-exist | `adapters/consumer.py:57` |
-| LOW | No test suite exists | entire `event_saver/` |
-| LOW | `EventRouter`/`CloudEventPublisher` wired in DI but never called | `ioc.py:93-109` |
-| LOW | Duplicate `_parse_occurred_at` logic in consumer and domain | `adapters/consumer.py:21-29`, `domain/services/event_parser.py:70-79` |
+| Severity | Issue | Location | Status |
+|---|---|---|---|
+| MEDIUM | `BookingDataExtractor` only maps two event types to status | `domain/services/booking_extractor.py:9-12` | Open (by design: COALESCE preserves existing) |
+| LOW | No test suite exists for projections | `tests/` | Open |
+| ~~HIGH~~ | ~~Application layer imports concrete classes~~ | - | Resolved 2026-04-21 |
+| ~~HIGH~~ | ~~No DLQ configured~~ | - | Resolved 2026-04-21 |
+| ~~MEDIUM~~ | ~~Projection failures silently swallowed~~ | - | Resolved 2026-04-21 |
+| ~~MEDIUM~~ | ~~Deduplication hash mismatch~~ | - | Resolved 2026-04-21 |
+| ~~CRITICAL~~ | ~~Projections read payload from wrong level (NULL values)~~ | - | Resolved 2026-04-22 |
+| ~~MEDIUM~~ | ~~MeetingLinkProjection ignores url_deleted~~ | - | Resolved 2026-04-22 |
+| ~~MEDIUM~~ | ~~BookingTimelineClassifier reads getstream type from wrong level~~ | - | Resolved 2026-04-22 |
+
+### Payload Structure Convention
+
+All CloudEvent payloads from `event-receiver` use a two-level wrapper:
+
+```json
+{"original": { /* raw source payload */ }, "normalized": {"participants": [...]}}
+```
+
+Projections and classifiers MUST access source-specific fields via `payload.get("original", payload)` (fallback for backward compatibility). Domain extractors (`BookingDataExtractor`, `ParticipantExtractor`) already follow this convention. See `VideoEventProjection` as the reference implementation.

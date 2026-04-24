@@ -56,7 +56,7 @@ class EventRepository:
                     :span_id,
                     :dataschema
                 )
-                on conflict (idempotency_key) do nothing
+                on conflict (idempotency_key) where idempotency_key is not null do nothing
                 returning event_id
                 """,
                 {

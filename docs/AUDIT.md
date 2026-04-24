@@ -254,3 +254,6 @@ No production code files require deletion. All previously-identified legacy code
 | L-3 | execute_in_transaction unused | Removed from SqlExecutor and ISqlExecutor | 2026-04-21 |
 | L-4 | EventRouter/CloudEventPublisher wired but unused | Removed publisher.py, routing interfaces, topology manager | 2026-04-21 |
 | L-6 | QUEUES_DIGEST.md incomplete | Synced with actual config.py routing rules | 2026-04-21 |
+| NEW-1 | All projections (except VideoEventProjection) read payload fields from top level instead of `original` — silently producing NULLs | Fixed: all projections now use `payload.get("original", payload)` pattern | 2026-04-22 |
+| NEW-2 | BookingTimelineClassifier reads getstream `type` from wrong payload level | Fixed: `_extract_action_by_source` and `_extract_action_by_queue_chat` now read from `original` | 2026-04-22 |
+| NEW-3 | MeetingLinkProjection ignores `meeting.url_deleted` events — deleted links persist in DB | Fixed: added `MEETING_URL_DELETED` handling with DELETE statement | 2026-04-22 |

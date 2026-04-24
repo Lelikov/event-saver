@@ -23,7 +23,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     settings = await container.get(Settings)
     log_level = getLevelNamesMapping().get(settings.log_level, logging.INFO)
-    setup_logger(log_level=log_level, console_render=settings.debug)
+    setup_logger(log_level=log_level, console_render=False)
 
     logger.info(
         "Starting event receiver application",
