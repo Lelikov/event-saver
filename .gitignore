@@ -143,3 +143,7 @@ pyrightconfig.json
 # Added by code-review-graph
 .code-review-graph/
 /postgres_data/
+
+# Data/log files
+*.jsonl
+logs.txt
