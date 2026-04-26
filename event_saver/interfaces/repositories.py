@@ -25,6 +25,13 @@ class IBookingRepository(Protocol):
         client_user_id: uuid.UUID | None,
     ) -> int: ...
 
+    async def update_client(
+        self,
+        *,
+        booking_ref_id: int,
+        client_user_id: uuid.UUID,
+    ) -> None: ...
+
     async def save_organizer_history(
         self,
         *,

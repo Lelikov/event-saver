@@ -96,6 +96,22 @@ class BookingRepository:
             return None
         return await self.find_by_booking_uid(booking_id)
 
+    async def update_client(
+        self,
+        *,
+        booking_ref_id: int,
+        client_user_id: uuid.UUID,
+    ) -> None:
+        """Explicitly set client_user_id on a booking (for client reassignment)."""
+        await self._sql.execute(
+            """
+            update bookings
+            set client_user_id = :client_user_id, updated_at = now()
+            where id = :booking_ref_id
+            """,
+            {"booking_ref_id": booking_ref_id, "client_user_id": str(client_user_id)},
+        )
+
     async def save_organizer_history(
         self,
         *,

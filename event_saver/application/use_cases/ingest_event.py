@@ -112,6 +112,20 @@ class IngestEventUseCase:
                     occurred_at=event.occurred_at,
                 )
 
+            if event.event_type == EventType.BOOKING_CLIENT_REASSIGNED:
+                new_client_id_str = event.payload.get("original", {}).get("new_client_user_id")
+                if new_client_id_str:
+                    try:
+                        new_client_uuid = uuid.UUID(new_client_id_str)
+                    except (ValueError, AttributeError):
+                        new_client_uuid = None
+                    if new_client_uuid:
+                        await self._booking_repository.update_client(
+                            booking_ref_id=booking_ref_id,
+                            client_user_id=new_client_uuid,
+                        )
+                        client_user_id = new_client_uuid
+
             logger.info(
                 "Booking upserted",
                 booking_ref_id=booking_ref_id,
