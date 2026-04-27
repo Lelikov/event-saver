@@ -87,7 +87,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         event_id = event["id"]
         event_type = event["type"]
         source = event["source"]
-        booking_id = event.get("booking_id")
+        booking_id = event.get("bookingid") or event.get("booking_id")
         time = event["time"]
 
         # Extract CloudEvents extensions
