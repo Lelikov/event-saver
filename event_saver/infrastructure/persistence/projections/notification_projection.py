@@ -60,6 +60,7 @@ class EmailNotificationProjection(BaseProjection):
         users = original.get("users")
         role = users[0].get("role") if isinstance(users, list) and users else None
         trigger_event = original.get("trigger_event")
+        email = original.get("email")
 
         user_id = (
             organizer_user_id
@@ -78,6 +79,7 @@ class EmailNotificationProjection(BaseProjection):
                 job_id,
                 sent_event_id,
                 sent_at,
+                recipient_email,
                 updated_at
             ) values (
                 :booking_ref_id,
@@ -86,6 +88,7 @@ class EmailNotificationProjection(BaseProjection):
                 :job_id,
                 :sent_event_id,
                 :sent_at,
+                :recipient_email,
                 now()
             )
             on conflict (job_id) do update
@@ -95,6 +98,7 @@ class EmailNotificationProjection(BaseProjection):
                 trigger_event = excluded.trigger_event,
                 sent_event_id = excluded.sent_event_id,
                 sent_at = excluded.sent_at,
+                recipient_email = coalesce(excluded.recipient_email, booking_email_notifications.recipient_email),
                 updated_at = now()
             """,
             {
@@ -104,6 +108,7 @@ class EmailNotificationProjection(BaseProjection):
                 "job_id": job_id,
                 "sent_event_id": event.event_id,
                 "sent_at": event.occurred_at,
+                "recipient_email": email if isinstance(email, str) else None,
             },
         )
 
@@ -122,6 +127,7 @@ class EmailNotificationProjection(BaseProjection):
         status = event_data.get("status")
         clicked_url = event_data.get("url")
         status_event_time = parse_iso_datetime(event_data.get("event_time"))
+        email = event_data.get("email")
 
         if not isinstance(job_id, str):
             return None
@@ -136,6 +142,7 @@ class EmailNotificationProjection(BaseProjection):
                 last_status_event_time,
                 last_status_event_id,
                 last_clicked_url,
+                recipient_email,
                 updated_at
             ) values (
                 :booking_ref_id,
@@ -145,6 +152,7 @@ class EmailNotificationProjection(BaseProjection):
                 :last_status_event_time,
                 :last_status_event_id,
                 :last_clicked_url,
+                :recipient_email,
                 now()
             )
             on conflict (job_id) do update
@@ -154,6 +162,7 @@ class EmailNotificationProjection(BaseProjection):
                 last_status_event_time = excluded.last_status_event_time,
                 last_status_event_id = excluded.last_status_event_id,
                 last_clicked_url = coalesce(excluded.last_clicked_url, booking_email_notifications.last_clicked_url),
+                recipient_email = coalesce(excluded.recipient_email, booking_email_notifications.recipient_email),
                 updated_at = now()
             """,
             {
@@ -163,6 +172,7 @@ class EmailNotificationProjection(BaseProjection):
                 "last_status_event_time": status_event_time,
                 "last_status_event_id": event.event_id,
                 "last_clicked_url": clicked_url if isinstance(clicked_url, str) else None,
+                "recipient_email": email if isinstance(email, str) else None,
             },
         )
 
@@ -186,6 +196,7 @@ class TelegramNotificationProjection(BaseProjection):
         users = original.get("users")
         role = users[0].get("role") if isinstance(users, list) and users else None
         trigger_event = original.get("trigger_event")
+        email = original.get("email")
 
         user_id = organizer_user_id if role == RecipientRole.ORGANIZER else client_user_id
 
@@ -199,13 +210,15 @@ class TelegramNotificationProjection(BaseProjection):
                 user_id,
                 trigger_event,
                 source_event_id,
-                sent_at
+                sent_at,
+                recipient_email
             ) values (
                 :booking_ref_id,
                 :user_id,
                 :trigger_event,
                 :source_event_id,
-                :sent_at
+                :sent_at,
+                :recipient_email
             )
             on conflict (source_event_id) do nothing
             """,
@@ -215,6 +228,7 @@ class TelegramNotificationProjection(BaseProjection):
                 "trigger_event": trigger_event if isinstance(trigger_event, str) else None,
                 "source_event_id": event.event_id,
                 "sent_at": event.occurred_at,
+                "recipient_email": email if isinstance(email, str) else None,
             },
         )
 

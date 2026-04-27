@@ -143,6 +143,7 @@ class BookingEmailNotification(Base):
     last_status_event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_clicked_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipient_email: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -175,6 +176,7 @@ class BookingTelegramNotification(Base):
     trigger_event: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_event_id: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recipient_email: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
