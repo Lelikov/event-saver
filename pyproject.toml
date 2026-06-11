@@ -8,8 +8,7 @@ dependencies = [
     "asyncpg>=0.31.0",
     "cloudevents>=1.12.0",
     "dishka>=1.8.0",
-    "event-schemas @ file:///Users/alexandrlelikov/PycharmProjects/events/event-schemas",
-    #    "event-schemas @ git+https://github.com/Lelikov/event-schemas.git",
+    "event-schemas",
     "fastapi>=0.135.1",
     "faststream[rabbit]>=0.6.7",
     "greenlet>=3.2.4",
@@ -20,6 +19,9 @@ dependencies = [
     "ujson>=5.11.0",
     "uvicorn>=0.41.0",
 ]
+
+[tool.uv.sources]
+event-schemas = { path = "../event-schemas", editable = true }
 
 [dependency-groups]
 dev = [
