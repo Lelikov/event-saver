@@ -18,103 +18,60 @@ class EventRepository:
     async def save(self, event: ParsedEvent) -> bool:
         """Save event to events table with deduplication.
 
-        Uses idempotency_key for primary deduplication if available,
-        falls back to legacy (booking_id, event_type, source, hash) constraint.
+        A single bare ``on conflict do nothing`` suppresses every unique
+        violation: the event_id primary key (broker redelivery of the same
+        CloudEvent) and the partial unique index on idempotency_key (the
+        deterministic key set by event-receiver). This avoids the previous
+        dual-path design where a collision on the non-targeted constraint
+        raised IntegrityError and dead-lettered the message.
 
         Returns:
             True if event was inserted, False if duplicate was skipped
 
         """
-        payload_json = ujson.dumps(event.payload)
-
-        # Primary deduplication via idempotency_key (if present)
-        if event.idempotency_key:
-            row = await self._sql.fetch_one(
-                """
-                insert into events (
-                    event_id,
-                    booking_id,
-                    event_type,
-                    source,
-                    hash,
-                    occurred_at,
-                    payload,
-                    idempotency_key,
-                    trace_id,
-                    span_id,
-                    dataschema
-                ) values (
-                    :event_id,
-                    :booking_id,
-                    :event_type,
-                    :source,
-                    :hash,
-                    :occurred_at,
-                    cast(:payload as jsonb),
-                    :idempotency_key,
-                    :trace_id,
-                    :span_id,
-                    :dataschema
-                )
-                on conflict (idempotency_key) where idempotency_key is not null do nothing
-                returning event_id
-                """,
-                {
-                    "event_id": event.event_id,
-                    "booking_id": event.booking_id,
-                    "event_type": event.event_type,
-                    "source": event.source,
-                    "hash": event.payload_hash,
-                    "occurred_at": event.occurred_at,
-                    "payload": payload_json,
-                    "idempotency_key": event.idempotency_key,
-                    "trace_id": event.trace_id,
-                    "span_id": event.span_id,
-                    "dataschema": event.dataschema,
-                },
+        row = await self._sql.fetch_one(
+            """
+            insert into events (
+                event_id,
+                booking_id,
+                event_type,
+                source,
+                hash,
+                occurred_at,
+                payload,
+                idempotency_key,
+                trace_id,
+                span_id,
+                dataschema
+            ) values (
+                :event_id,
+                :booking_id,
+                :event_type,
+                :source,
+                :hash,
+                :occurred_at,
+                cast(:payload as jsonb),
+                :idempotency_key,
+                :trace_id,
+                :span_id,
+                :dataschema
             )
-        else:
-            # Legacy deduplication (backward compatibility)
-            row = await self._sql.fetch_one(
-                """
-                insert into events (
-                    event_id,
-                    booking_id,
-                    event_type,
-                    source,
-                    hash,
-                    occurred_at,
-                    payload,
-                    trace_id,
-                    span_id,
-                    dataschema
-                ) values (
-                    :event_id,
-                    :booking_id,
-                    :event_type,
-                    :source,
-                    :hash,
-                    :occurred_at,
-                    cast(:payload as jsonb),
-                    :trace_id,
-                    :span_id,
-                    :dataschema
-                )
-                on conflict (booking_id, event_type, source, hash) do nothing
-                returning event_id
-                """,
-                {
-                    "event_id": event.event_id,
-                    "booking_id": event.booking_id,
-                    "event_type": event.event_type,
-                    "source": event.source,
-                    "hash": event.payload_hash,
-                    "occurred_at": event.occurred_at,
-                    "payload": payload_json,
-                    "trace_id": event.trace_id,
-                    "span_id": event.span_id,
-                    "dataschema": event.dataschema,
-                },
-            )
+            on conflict do nothing
+            returning event_id
+            """,
+            {
+                "event_id": event.event_id,
+                "booking_id": event.booking_id,
+                "event_type": event.event_type,
+                "source": event.source,
+                "hash": event.payload_hash,
+                "occurred_at": event.occurred_at,
+                "payload": ujson.dumps(event.payload),
+                "idempotency_key": event.idempotency_key,
+                "trace_id": event.trace_id,
+                "span_id": event.span_id,
+                "dataschema": event.dataschema,
+            },
+        )
 
         return row is not None
