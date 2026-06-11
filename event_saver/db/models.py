@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from event_saver.db.base import Base
@@ -23,6 +23,10 @@ class Event(Base):
         server_default=text("now()"),
     )
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    span_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dataschema: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index(
@@ -36,12 +40,15 @@ class Event(Base):
             text("occurred_at DESC"),
         ),
         Index(
-            "uq_events_booking_id_event_type_source_hash",
-            "booking_id",
-            "event_type",
-            "source",
-            "hash",
+            "idx_events_idempotency",
+            "idempotency_key",
             unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        Index(
+            "idx_events_trace_id",
+            "trace_id",
+            postgresql_where=text("trace_id IS NOT NULL"),
         ),
     )
 
@@ -267,4 +274,35 @@ class BookingVideoEvent(Base):
             "video_event_type",
             text("event_time DESC"),
         ),
+    )
+
+
+class BookingLifecycleEvent(Base):
+    __tablename__ = "booking_lifecycle_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    booking_ref_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("bookings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    raw_event_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("events.event_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    organizer_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    client_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("raw_event_id", name="uq_booking_lifecycle_events_raw_event_id"),
+        Index("ix_ble_booking_ref_occurred_at", "booking_ref_id", text("occurred_at")),
     )
