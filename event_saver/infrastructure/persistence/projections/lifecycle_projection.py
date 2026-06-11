@@ -16,6 +16,7 @@ _LIFECYCLE_TYPES = {
     EventType.BOOKING_RESCHEDULED,
     EventType.BOOKING_REASSIGNED,
     EventType.BOOKING_CANCELLED,
+    EventType.BOOKING_REJECTED,
     EventType.BOOKING_CLIENT_REASSIGNED,
 }
 
@@ -24,6 +25,7 @@ _ACTION_MAP: dict[str, str] = {
     EventType.BOOKING_RESCHEDULED: "rescheduled",
     EventType.BOOKING_REASSIGNED: "reassigned",
     EventType.BOOKING_CANCELLED: "cancelled",
+    EventType.BOOKING_REJECTED: "rejected",
     EventType.BOOKING_CLIENT_REASSIGNED: "client_reassigned",
 }
 
@@ -109,6 +111,16 @@ class LifecycleProjection(BaseProjection):
 
         if event.event_type == EventType.BOOKING_CANCELLED:
             return _pick(original, "cancellation_reason", "cancelled_by")
+
+        if event.event_type == EventType.BOOKING_REJECTED:
+            return _pick(
+                original,
+                "rejection_type",
+                "rejection_reasons",
+                "available_from",
+                "has_active_booking",
+                "active_booking_start",
+            )
 
         if event.event_type == EventType.BOOKING_CLIENT_REASSIGNED:
             return _pick(original, "new_client_user_id", "requested_by")

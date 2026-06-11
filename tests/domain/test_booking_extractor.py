@@ -35,6 +35,15 @@ class TestExtract:
 
         assert result.status == "cancelled"
 
+    def test_booking_rejected_status(self) -> None:
+        result = self.extractor.extract(
+            booking_id="book-1",
+            event_type="booking.rejected",
+            payload={"original": {"client_email": "client@example.com"}},
+        )
+
+        assert result.status == "rejected"
+
     def test_unknown_event_type_no_status(self) -> None:
         result = self.extractor.extract(
             booking_id="book-1",

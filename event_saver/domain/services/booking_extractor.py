@@ -12,6 +12,7 @@ from event_saver.utils import parse_iso_datetime
 _STATUS_BY_EVENT_TYPE: dict[str, str] = {
     EventType.BOOKING_CREATED: "created",
     EventType.BOOKING_CANCELLED: "cancelled",
+    EventType.BOOKING_REJECTED: "rejected",
     # booking.rescheduled: status unchanged, COALESCE preserves existing
     # booking.reassigned: status unchanged
     # booking.reminder_sent: not a status change

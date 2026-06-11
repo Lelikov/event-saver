@@ -53,6 +53,10 @@ class TestCanHandle:
         projection = LifecycleProjection()
         assert projection.can_handle(_make_event("booking.cancelled")) is True
 
+    def test_returns_true_for_booking_rejected(self) -> None:
+        projection = LifecycleProjection()
+        assert projection.can_handle(_make_event("booking.rejected")) is True
+
     def test_returns_false_for_booking_reminder_sent(self) -> None:
         projection = LifecycleProjection()
         assert projection.can_handle(_make_event("booking.reminder_sent")) is False
@@ -160,6 +164,38 @@ class TestHandleReassigned:
         assert params["action"] == "reassigned"
         details = json.loads(params["details"])
         assert details == {"previous_organizer": prev_org_id}
+
+
+class TestHandleRejected:
+    @pytest.mark.anyio
+    async def test_extracts_rejection_details(self) -> None:
+        event = _make_event(
+            "booking.rejected",
+            payload={
+                "original": {
+                    "client_email": "client@example.com",
+                    "rejection_type": "no_slots",
+                    "rejection_reasons": ["volunteer_unavailable"],
+                    "available_from": "2026-02-01T00:00:00Z",
+                    "has_active_booking": True,
+                    "active_booking_start": "2026-01-25T10:00:00Z",
+                },
+            },
+        )
+        projection = LifecycleProjection()
+        result = await projection.handle(event=event, **_HANDLE_DEFAULTS)
+
+        assert result is not None
+        _, params = result
+        assert params["action"] == "rejected"
+        details = json.loads(params["details"])
+        assert details == {
+            "rejection_type": "no_slots",
+            "rejection_reasons": ["volunteer_unavailable"],
+            "available_from": "2026-02-01T00:00:00Z",
+            "has_active_booking": True,
+            "active_booking_start": "2026-01-25T10:00:00Z",
+        }
 
 
 class TestHandleCancelled:
