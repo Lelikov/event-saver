@@ -27,5 +27,10 @@ class Settings(BaseSettings):
     # Queues/bindings/arguments come from event_schemas.queues.SAVER_QUEUES (single source of truth)
     rabbit_url: AmqpDsn = "amqp://guest:guest@localhost:5672/"
     rabbit_exchange: str = "events"
+    # Bounded prefetch keeps backlog floods from exhausting the DB pool (pool_size=10, max_overflow=20)
+    # and preserves x-max-priority ordering on the queues.
+    rabbit_prefetch_count: int = 10
+    # Seconds FastStream waits for in-flight handlers before force-cancelling on shutdown.
+    rabbit_graceful_timeout: float = 30.0
 
     postgres_dsn: PostgresDsn = Field(strict=True)

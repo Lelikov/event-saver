@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 
 import structlog
 from dishka import Provider, Scope, provide
-from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, fastapi
+from faststream.rabbit import Channel, ExchangeType, RabbitBroker, RabbitExchange, fastapi
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -44,6 +44,19 @@ from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 logger = structlog.get_logger(__name__)
 
 
+def build_rabbit_router(settings: Settings) -> fastapi.RabbitRouter:
+    """Build the RabbitRouter with bounded prefetch (QoS) and graceful shutdown.
+
+    Without prefetch_count RabbitMQ delivers the whole backlog at once,
+    exhausting the DB pool and defeating x-max-priority ordering.
+    """
+    return fastapi.RabbitRouter(
+        str(settings.rabbit_url),
+        default_channel=Channel(prefetch_count=settings.rabbit_prefetch_count),
+        graceful_timeout=settings.rabbit_graceful_timeout,
+    )
+
+
 class AppProvider(Provider):
     """DI provider with clean architecture."""
 
@@ -64,8 +77,13 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def provide_faststream_router(self, settings: Settings) -> fastapi.RabbitRouter:
-        logger.info("Creating FastStream RabbitRouter", rabbit_url=settings.rabbit_url)
-        return fastapi.RabbitRouter(str(settings.rabbit_url))
+        logger.info(
+            "Creating FastStream RabbitRouter",
+            rabbit_url=settings.rabbit_url,
+            prefetch_count=settings.rabbit_prefetch_count,
+            graceful_timeout=settings.rabbit_graceful_timeout,
+        )
+        return build_rabbit_router(settings)
 
     @provide(scope=Scope.APP)
     def provide_broker(self, router: fastapi.RabbitRouter) -> RabbitBroker:
