@@ -14,6 +14,7 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 - Upsert booking records and organizer history
 - Execute projection handlers that materialize normalized views into dedicated tables
 - Own the PostgreSQL schema: all Alembic migrations live here
+- Reconcile missing participant user_ids: a periodic background task re-resolves bookings whose `organizer_user_id`/`client_user_id` is NULL via the event-users API (see "Background Tasks")
 
 ## NOT Responsible For
 
@@ -29,6 +30,7 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 |---|---|---|
 | **RabbitMQ** | Message broker (consumer) | `RABBIT_URL` (AMQP), topic exchange `events` |
 | **PostgreSQL** | Persistent store (owner/writer) | `POSTGRES_DSN` (asyncpg) |
+| **event-users** | Identity resolution for the user_id backfill (optional; only when `USER_ID_BACKFILL_ENABLED=True`) | `EVENT_USERS_API_URL` (HTTP, Bearer `EVENT_USERS_API_TOKEN`) |
 
 ## Key Environment Variables
 
@@ -41,6 +43,11 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 | `RABBIT_GRACEFUL_TIMEOUT` | No | `30` | Seconds to drain in-flight handlers on shutdown |
 | `DEBUG` | No | `False` | Enable debug mode |
 | `LOG_LEVEL` | No | `INFO` | Structlog level |
+| `USER_ID_BACKFILL_ENABLED` | No | `False` | Enable the periodic user_id backfill task |
+| `USER_ID_BACKFILL_INTERVAL_SECONDS` | No | `300` | Pause between backfill cycles |
+| `USER_ID_BACKFILL_BATCH_SIZE` | No | `100` | Max incomplete bookings scanned per cycle |
+| `EVENT_USERS_API_URL` | When backfill enabled | `""` | event-users base URL (fail-fast validated at DI wiring) |
+| `EVENT_USERS_API_TOKEN` | When backfill enabled | `""` | Static Bearer token for event-users |
 
 Reference: `event_saver/config.py`. Queue topology comes from `event_schemas.queues.SAVER_QUEUES`.
 
@@ -118,6 +125,28 @@ graph TB
 |---|---|---|
 | GET | `/health` | Liveness: process up, HTTP serving |
 | GET | `/ready` | Readiness: `SELECT 1` against PostgreSQL (503 when unreachable) |
+
+## Background Tasks
+
+### user_id backfill / reconciliation (audit-v2 follow-up #9)
+
+When event-users is down at ingress, event-receiver publishes participants with
+`user_id=None` and bookings are persisted with NULL `organizer_user_id` /
+`client_user_id`. A periodic asyncio task (started in the app lifespan when
+`USER_ID_BACKFILL_ENABLED=True`) reconciles them:
+
+1. Selects up to `USER_ID_BACKFILL_BATCH_SIZE` bookings with a NULL participant column (`ORDER BY id`)
+2. Finds the missing participant's email in the latest stored event payload (`events.payload->normalized->participants`, lateral JSONB query)
+3. Resolves email+role via event-users `GET /api/users/by-identity` (Bearer token; identities are cached per cycle; the backfill never creates users)
+4. Updates the booking row (`UPDATE ... WHERE id = :id AND <column> IS NULL`), commits once per cycle, and logs a summary (`scanned_bookings` / `resolved` / `unresolved` / `missing_email` / `aborted`)
+
+On event-users transport errors (`UsersServiceUnavailableError`) the cycle is
+aborted: already-resolved rows are committed, the rest wait for the next
+interval (back-off by skipping the cycle). Unexpected exceptions are logged and
+the loop survives. Components: `application/services/user_id_backfill.py`
+(UserIdBackfillService), `adapters/users_client.py` (UsersHttpResolver),
+`adapters/backfill_runner.py` (UserIdBackfillRunner), protocols in
+`interfaces/user_resolver.py` / `interfaces/backfill.py`.
 
 ## Reliability
 

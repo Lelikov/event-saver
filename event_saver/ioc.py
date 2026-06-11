@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+import httpx
 import structlog
 from dishka import Provider, Scope, provide
 from faststream.rabbit import Channel, ExchangeType, RabbitBroker, RabbitExchange, fastapi
@@ -16,7 +17,10 @@ from event_saver.adapters import (
     BookingTimelineClassifier,
     RabbitEventConsumerRunner,
     SqlExecutor,
+    UserIdBackfillRunner,
+    UsersHttpResolver,
 )
+from event_saver.application.services.user_id_backfill import UserIdBackfillService
 from event_saver.config import Settings
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
 from event_saver.infrastructure.persistence.event_store_facade import CleanArchitectureEventStore
@@ -34,11 +38,13 @@ from event_saver.infrastructure.persistence.repositories import (
     BookingRepository,
     EventRepository,
 )
+from event_saver.interfaces.backfill import IUserIdBackfillRunner
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 from event_saver.interfaces.projection import IBookingEventClassifier
 from event_saver.interfaces.projection_handler import IProjectionHandler
 from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
+from event_saver.interfaces.user_resolver import IUserResolver
 
 
 logger = structlog.get_logger(__name__)
@@ -276,4 +282,48 @@ class AppProvider(Provider):
             broker=broker,
             exchange=exchange,
             event_store=event_store,
+        )
+
+    # ========== user_id backfill (audit-v2 follow-up #9) ==========
+
+    @provide(scope=Scope.APP)
+    async def provide_event_users_http_client(self, settings: Settings) -> AsyncGenerator[httpx.AsyncClient]:
+        if settings.user_id_backfill_enabled and not settings.event_users_api_url:
+            msg = "USER_ID_BACKFILL_ENABLED=True requires EVENT_USERS_API_URL"
+            raise ValueError(msg)
+        client = httpx.AsyncClient(base_url=settings.event_users_api_url, timeout=10.0)
+        try:
+            yield client
+        finally:
+            await client.aclose()
+
+    @provide(scope=Scope.APP)
+    def provide_user_resolver(self, settings: Settings, http_client: httpx.AsyncClient) -> IUserResolver:
+        return UsersHttpResolver(http_client=http_client, api_token=settings.event_users_api_token)
+
+    @provide(scope=Scope.APP)
+    def provide_user_id_backfill_service(
+        self,
+        settings: Settings,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        sql_executor_factory: ISqlExecutorFactory,
+        resolver: IUserResolver,
+    ) -> UserIdBackfillService:
+        return UserIdBackfillService(
+            sessionmaker=sessionmaker,
+            sql_executor_factory=sql_executor_factory,
+            resolver=resolver,
+            batch_size=settings.user_id_backfill_batch_size,
+        )
+
+    @provide(scope=Scope.APP)
+    def provide_user_id_backfill_runner(
+        self,
+        settings: Settings,
+        service: UserIdBackfillService,
+    ) -> IUserIdBackfillRunner:
+        return UserIdBackfillRunner(
+            service=service,
+            interval_seconds=settings.user_id_backfill_interval_seconds,
+            enabled=settings.user_id_backfill_enabled,
         )

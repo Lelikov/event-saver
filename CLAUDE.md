@@ -161,6 +161,21 @@ The `hash` column (`md5(json.dumps(payload, sort_keys=True, ensure_ascii=False))
 is informational metadata only; the legacy `(booking_id, event_type, source, hash)`
 unique index was dropped in migration `a9d4c1f0b7e2`.
 
+### user_id Backfill (background task)
+
+A periodic asyncio loop (`adapters/backfill_runner.py`, started from the app
+lifespan when `USER_ID_BACKFILL_ENABLED=True`) reconciles bookings whose
+`organizer_user_id`/`client_user_id` stayed NULL because event-users was down
+at ingress. Per cycle it selects a batch of incomplete bookings, extracts each
+missing participant's email from the latest stored event payload
+(`normalized.participants`), resolves email+role via event-users
+`GET /api/users/by-identity` (`adapters/users_client.py`), updates the rows in
+one transaction (`application/services/user_id_backfill.py`) and logs a
+summary. Transport errors abort the cycle (back-off until the next interval);
+the backfill never creates users. Protocols: `IUserResolver`
+(`interfaces/user_resolver.py`), `IUserIdBackfillRunner`
+(`interfaces/backfill.py`).
+
 ### Queue Subscriptions
 
 event-saver does not route events — it only consumes. The queue set, bindings
@@ -186,6 +201,10 @@ Settings are loaded from `.env` file via Pydantic Settings (`config.py`):
 - `RABBIT_EXCHANGE` - exchange name (default: `events`)
 - `RABBIT_PREFETCH_COUNT` - consumer QoS prefetch (default: `10`, keep within DB pool headroom)
 - `RABBIT_GRACEFUL_TIMEOUT` - seconds to drain in-flight handlers on shutdown (default: `30`)
+- `USER_ID_BACKFILL_ENABLED` - enable the periodic user_id backfill task (default: `False`)
+- `USER_ID_BACKFILL_INTERVAL_SECONDS` - pause between backfill cycles (default: `300`)
+- `USER_ID_BACKFILL_BATCH_SIZE` - incomplete bookings scanned per cycle (default: `100`)
+- `EVENT_USERS_API_URL` / `EVENT_USERS_API_TOKEN` - event-users base URL + static Bearer token; required when the backfill is enabled (fail-fast validated at DI wiring)
 
 Queues/bindings/arguments are NOT configurable — they come from `event_schemas.queues.SAVER_QUEUES`.
 

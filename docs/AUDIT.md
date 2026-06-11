@@ -93,6 +93,18 @@ and `db/models.py` drift. Suite: 100 tests. Commits `0d10102`..`04a0bf9`.
 
 ---
 
+## Post-audit follow-ups
+
+- **audit-v2 follow-up #9 — user_id backfill/reconciliation (FIXED 2026-06-11):**
+  bookings persisted with NULL `organizer_user_id`/`client_user_id` (event-users
+  down at ingress) are now reconciled by a periodic background task
+  (`UserIdBackfillService` + `UserIdBackfillRunner`, opt-in via
+  `USER_ID_BACKFILL_ENABLED`). Emails come from the latest stored event payload;
+  identities resolve via event-users `GET /api/users/by-identity`; transport
+  errors skip the cycle. See SERVICE_OVERVIEW.md § Background Tasks.
+
+---
+
 ## Accepted / documented decisions
 
 - **`events.notification.commands` and `events.user.email` are not persisted

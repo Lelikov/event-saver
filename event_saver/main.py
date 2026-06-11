@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from event_saver.config import Settings
+from event_saver.interfaces.backfill import IUserIdBackfillRunner
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.ioc import AppProvider
 from event_saver.logger import setup_logger
@@ -39,9 +40,13 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     await consumer_runner.start()
     logger.info("Event consumer started and application is ready")
 
+    backfill_runner = await container.get(IUserIdBackfillRunner)
+    await backfill_runner.start()
+
     yield
 
     logger.info("Shutting down event-saver application")
+    await backfill_runner.stop()
     await consumer_runner.stop()
     await container.close()
     logger.info("event-saver application shutdown complete")

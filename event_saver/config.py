@@ -34,3 +34,13 @@ class Settings(BaseSettings):
     rabbit_graceful_timeout: float = 30.0
 
     postgres_dsn: PostgresDsn = Field(strict=True)
+
+    # --- user_id backfill / reconciliation (audit-v2 follow-up #9) ---
+    # When event-users is down at ingress, event-receiver publishes participants
+    # with user_id=None; this periodic task re-resolves them via event-users.
+    user_id_backfill_enabled: bool = False
+    user_id_backfill_interval_seconds: float = 300.0
+    user_id_backfill_batch_size: int = 100
+    # Required when user_id_backfill_enabled=True (validated at DI wiring).
+    event_users_api_url: str = ""
+    event_users_api_token: str = ""
