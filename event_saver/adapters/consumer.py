@@ -2,8 +2,10 @@ from typing import Any
 
 import structlog
 from cloudevents.http import from_http
+from event_schemas.attributes import BOOKING_ID_ATTRIBUTE
+from event_schemas.queues import EVENTS_DLX, SAVER_QUEUES, QueueSpec
 from faststream import Context
-from faststream.rabbit import RabbitBroker, RabbitExchange, RabbitQueue
+from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, RabbitQueue
 
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
@@ -23,12 +25,12 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         *,
         broker: RabbitBroker,
         exchange: RabbitExchange,
-        queue_names: set[str],
         event_store: IEventStore,
+        queue_specs: tuple[QueueSpec, ...] = SAVER_QUEUES,
     ) -> None:
         self._broker = broker
         self._exchange = exchange
-        self._queue_names = queue_names
+        self._queue_specs = queue_specs
         self._event_store = event_store
         self._started = False
 
@@ -36,18 +38,14 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         if self._started:
             return
 
-        for queue_name in self._queue_names:
+        for spec in self._queue_specs:
             subscriber = self._broker.subscriber(
                 queue=RabbitQueue(
-                    name=queue_name,
+                    name=spec.name,
                     durable=True,
-                    routing_key=queue_name,
+                    routing_key=str(spec.binding),
                     declare=True,
-                    arguments={
-                        "x-max-priority": 10,
-                        "x-dead-letter-exchange": "events.dlx",
-                        "x-dead-letter-routing-key": f"{queue_name}.dlq",
-                    },
+                    arguments=spec.arguments,
                 ),
                 exchange=self._exchange,
             )
@@ -55,16 +53,32 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
             @subscriber
             async def consume(
                 message: Any = Context("message"),
-                _queue_name: str = queue_name,
+                _queue_name: str = spec.name,
             ) -> None:
                 await self._consume_message(message=message, queue_name=_queue_name)
 
         await self._broker.start()
+        await self._ensure_dead_letter_topology()
         self._started = True
         logger.info(
             "Rabbit consumer runner started",
-            queue_count=len(self._queue_names),
+            queue_count=len(self._queue_specs),
         )
+
+    async def _ensure_dead_letter_topology(self) -> None:
+        """Idempotently declare the DLX and own DLQs (no startup-order dependency on event-receiver)."""
+        dlx = RabbitExchange(name=EVENTS_DLX, type=ExchangeType.TOPIC, durable=True)
+        declared_dlx = await self._broker.declare_exchange(dlx)
+        for spec in self._queue_specs:
+            dlq = RabbitQueue(
+                name=spec.dlq_name,
+                durable=True,
+                routing_key=spec.dlq_name,
+                arguments=spec.dlq_arguments,
+            )
+            declared_dlq = await self._broker.declare_queue(dlq)
+            await declared_dlq.bind(exchange=declared_dlx, routing_key=spec.dlq_name)
+        logger.info("Dead-letter topology ensured", dlx=EVENTS_DLX, dlq_count=len(self._queue_specs))
 
     async def stop(self) -> None:
         if not self._started:
@@ -87,7 +101,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         event_id = event["id"]
         event_type = event["type"]
         source = event["source"]
-        booking_id = event.get("bookingid") or event.get("booking_id")
+        booking_id = event.get(BOOKING_ID_ATTRIBUTE)
         time = event["time"]
 
         # Extract CloudEvents extensions

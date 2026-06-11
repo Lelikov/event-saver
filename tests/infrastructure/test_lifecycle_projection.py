@@ -115,7 +115,8 @@ class TestHandleRescheduled:
                 "original": {
                     "start_time": "2026-02-01T09:00:00Z",
                     "end_time": "2026-02-01T10:00:00Z",
-                    "previous_booking.start_time": "2026-01-20T09:00:00Z",
+                    "previous_start_time": "2026-01-20T09:00:00Z",
+                    "previous_booking_uid": "old-uid-123",
                 },
             },
         )
@@ -129,7 +130,8 @@ class TestHandleRescheduled:
         assert details == {
             "start_time": "2026-02-01T09:00:00Z",
             "end_time": "2026-02-01T10:00:00Z",
-            "previous_booking.start_time": "2026-01-20T09:00:00Z",
+            "previous_start_time": "2026-01-20T09:00:00Z",
+            "previous_booking_uid": "old-uid-123",
         }
 
 

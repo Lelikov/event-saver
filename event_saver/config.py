@@ -1,93 +1,5 @@
-from event_schemas.types import EventType, SourceType
 from pydantic import AmqpDsn, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from event_saver.routing import RouteRule, RoutingConfig
-
-
-def _default_route_rules() -> list[RouteRule]:
-    return [
-        RouteRule(
-            destination="events.booking.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_CREATED,
-        ),
-        RouteRule(
-            destination="events.booking.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_RESCHEDULED,
-        ),
-        RouteRule(
-            destination="events.booking.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_REASSIGNED,
-        ),
-        RouteRule(
-            destination="events.booking.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_CANCELLED,
-        ),
-        RouteRule(
-            destination="events.booking.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_REMINDER_SENT,
-        ),
-        RouteRule(
-            destination="events.booking.reminder",
-            source_pattern="*",
-            type_pattern=EventType.BOOKING_REMINDER_SENT,
-        ),
-        RouteRule(
-            destination="events.chat.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.CHAT_CREATED,
-        ),
-        RouteRule(
-            destination="events.chat.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.CHAT_DELETED,
-        ),
-        RouteRule(
-            destination="events.chat.activity",
-            source_pattern="*",
-            type_pattern=EventType.CHAT_MESSAGE_SENT,
-        ),
-        RouteRule(
-            destination="events.meeting.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.MEETING_URL_CREATED,
-        ),
-        RouteRule(
-            destination="events.meeting.lifecycle",
-            source_pattern="*",
-            type_pattern=EventType.MEETING_URL_DELETED,
-        ),
-        RouteRule(
-            destination="events.notification.delivery",
-            source_pattern="*",
-            type_pattern=EventType.NOTIFICATION_EMAIL_SENT,
-        ),
-        RouteRule(
-            destination="events.notification.delivery",
-            source_pattern="*",
-            type_pattern=EventType.NOTIFICATION_TELEGRAM_SENT,
-        ),
-        RouteRule(
-            destination="events.jitsi",
-            source_pattern=f"{SourceType.JITSI}*",
-            type_pattern="*",
-        ),
-        RouteRule(
-            destination="events.mail",
-            source_pattern=SourceType.UNISENDER_GO,
-            type_pattern=EventType.UNISENDER_STATUS_CREATED,
-        ),
-        RouteRule(
-            destination="events.chat",
-            source_pattern=SourceType.GETSTREAM,
-            type_pattern="getstream.*",
-        ),
-    ]
 
 
 class Settings(BaseSettings):
@@ -112,29 +24,9 @@ class Settings(BaseSettings):
             )
         return upper
 
+    # Queues/bindings/arguments come from event_schemas.queues.SAVER_QUEUES (single source of truth)
     rabbit_url: AmqpDsn = "amqp://guest:guest@localhost:5672/"
     rabbit_exchange: str = "events"
-    default_rabbit_destination: str = "events.unrouted"
-    event_routing_rules: list[RouteRule] = Field(default_factory=_default_route_rules)
-    rabbit_topology_queues: list[str] = Field(default_factory=list)
     getstream_user_id_encryption_key: str | None = None
 
     postgres_dsn: PostgresDsn = Field(strict=True)
-
-    @property
-    def routing_destinations(self) -> set[str]:
-        destinations = {self.default_rabbit_destination}
-        destinations.update(rule.destination for rule in self.event_routing_rules)
-        return destinations
-
-    @property
-    def topology_queues(self) -> set[str]:
-        explicit = set(self.rabbit_topology_queues)
-        return explicit or self.routing_destinations
-
-    @property
-    def routing(self) -> RoutingConfig:
-        return RoutingConfig(
-            default_destination=self.default_rabbit_destination,
-            rules=self.event_routing_rules,
-        )

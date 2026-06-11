@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from event_schemas.envelope import unwrap_payload
 from event_schemas.types import EventType
 
 from event_saver.domain.models.booking import BookingData
@@ -32,7 +33,7 @@ class BookingDataExtractor:
         payload: dict[str, Any],
     ) -> BookingData:
         """Extract booking data from payload."""
-        original = payload.get("original", {})
+        original = unwrap_payload(payload)
         start_time = original.get("start_time")
         end_time = original.get("end_time")
         status = _STATUS_BY_EVENT_TYPE.get(event_type)

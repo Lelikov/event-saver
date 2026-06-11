@@ -57,7 +57,6 @@ class AppProvider(Provider):
             debug=settings.debug,
             log_level=settings.log_level,
             rabbit_exchange=settings.rabbit_exchange,
-            routing_rules_count=len(settings.event_routing_rules),
         )
         return settings
 
@@ -251,7 +250,6 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_event_consumer_runner(
         self,
-        settings: Settings,
         broker: RabbitBroker,
         exchange: RabbitExchange,
         event_store: IEventStore,
@@ -259,6 +257,5 @@ class AppProvider(Provider):
         return RabbitEventConsumerRunner(
             broker=broker,
             exchange=exchange,
-            queue_names=settings.topology_queues,
             event_store=event_store,
         )
