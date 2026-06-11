@@ -29,12 +29,15 @@
 
 ## booking.rescheduled
 
-| Поле                        | Тип        |
-|-----------------------------|------------|
-| booking_uid                 | `str`      |
-| start_time                  | `datetime` |
-| end_time                    | `datetime` |
-| previous_booking.start_time | `datetime  | None` |
+| Поле                 | Тип        |
+|----------------------|------------|
+| booking_uid          | `str` (НОВЫЙ uid cal.com) |
+| users[]              | `list[BookingParticipant]` |
+| start_time           | `datetime` |
+| end_time             | `datetime` |
+| previous_start_time  | `datetime \| None` |
+| previous_booking_uid | `str \| None` (старый uid, cal.com `rescheduleUid`) |
+| rescheduled_by       | `str \| None` |
 
 ## booking.reassigned
 
@@ -50,7 +53,33 @@
 | Поле                | Тип   |
 |---------------------|-------|
 | booking_uid         | `str` |
-| cancellation_reason | `str  | None` |
+| users[]             | `list[BookingParticipant]` |
+| cancellation_reason | `str \| None` |
+| cancelled_by        | `str \| None` |
+
+## booking.rejected
+
+Статус брони -> `rejected`; в `booking_lifecycle_events` пишется action `rejected`.
+
+| Поле                 | Тип    |
+|----------------------|--------|
+| booking_uid          | `str`  |
+| client_email         | `str`  |
+| rejection_type       | `str \| None` |
+| rejection_reasons    | `list[str]` |
+| available_from       | `datetime \| None` |
+| has_active_booking   | `bool` |
+| active_booking_start | `datetime \| None` |
+
+## booking.client_reassigned
+
+В `bookings.client_user_id` записывается новый клиент; action `client_reassigned` в timeline.
+
+| Поле               | Тип   |
+|--------------------|-------|
+| booking_uid        | `str` |
+| new_client_user_id | `str` (UUID из event-users) |
+| requested_by       | `str \| None` |
 
 ## chat.created
 

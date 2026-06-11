@@ -78,7 +78,6 @@ The codebase follows clean architecture principles with strict layering:
 domain/                     # Pure business logic (no dependencies)
   models/                   # Value objects (immutable, typed)
     event.py               # ParsedEvent, RawEventData
-    participant.py         # Participant
     booking.py            # BookingData
   services/                # Domain services (business logic)
     event_parser.py        # Parse CloudEvents → domain models
@@ -95,7 +94,6 @@ infrastructure/            # Implementation details
   persistence/
     repositories/          # Data access (pure CRUD)
       event_repository.py
-      participant_repository.py
       booking_repository.py
     projections/           # Independent event handlers
       meeting_projection.py
@@ -105,8 +103,7 @@ infrastructure/            # Implementation details
     event_store_facade.py  # Adapter for IEventStore interface
 
   messaging/               # In adapters/ for now
-    consumer.py           # RabbitMQ consumer
-    publisher.py          # CloudEvent publisher
+    consumer.py           # RabbitMQ consumer (retry/DLQ classification)
 ```
 
 ### Key Principles
@@ -141,35 +138,54 @@ When adding new features:
 
 1. **Parse** - `EventParser` converts CloudEvent → `ParsedEvent` (domain model)
 2. **Save Raw Event** - `EventRepository.save()` with deduplication
-3. **Extract Participants** - `ParticipantExtractor` → `ParticipantRepository.upsert()`
+3. **Extract Participants** - `ParticipantExtractor` resolves organizer/client UUIDs from `normalized.participants`
 4. **Extract Booking Data** - `BookingDataExtractor` → `BookingRepository.upsert()`
 5. **Execute Projections** - `ProjectionExecutor` runs all applicable handlers:
    - `MeetingLinkProjection` → booking_meeting_links
    - `EmailNotificationProjection` → booking_email_notifications
    - `TelegramNotificationProjection` → booking_telegram_notifications
-   - `ChatEventProjection` → booking_chat_events
+   - `ChatEventProjection` / `ChatReadUpdateProjection` → booking_chat_events
    - `VideoEventProjection` → booking_video_events
+   - `LifecycleProjection` → booking_lifecycle_events (created/rescheduled/reassigned/cancelled/rejected/client_reassigned)
    - Each projection is independent and can be added/removed easily
 
 ### Event Deduplication
 
-Events are deduplicated using a composite unique constraint:
-- `(booking_id, event_type, source, md5(payload::text))`
-- If an identical event is received, `ON CONFLICT DO NOTHING` prevents duplicate storage
-- Only the first occurrence of each unique event is saved
+A single `INSERT ... ON CONFLICT DO NOTHING` (no named target) suppresses every
+unique violation:
+- `event_id` primary key — broker redelivery of the same CloudEvent
+- `idx_events_idempotency` partial unique index on `idempotency_key` — the
+  deterministic key set by event-receiver (`ce-idempotencykey`)
 
-### Event Routing
+The `hash` column (`md5(json.dumps(payload, sort_keys=True, ensure_ascii=False))`)
+is informational metadata only; the legacy `(booking_id, event_type, source, hash)`
+unique index was dropped in migration `a9d4c1f0b7e2`.
 
-`EventRouter` (in `routing.py`) routes events to specific RabbitMQ queues based on configurable rules:
-- Supports glob patterns (`fnmatch`) for `source_pattern` and `type_pattern`
-- First matching rule wins
-- Falls back to `default_rabbit_destination` if no rules match
-- Default rules route to queues like:
-  - `events.booking.lifecycle` - booking created/cancelled/reassigned
-  - `events.chat.activity` - chat messages
-  - `events.notification.delivery` - email/telegram notifications
-  - `events.jitsi` - Jitsi meeting events
-  - `events.unrouted` - fallback queue
+### user_id Backfill (background task)
+
+A periodic asyncio loop (`adapters/backfill_runner.py`, started from the app
+lifespan when `USER_ID_BACKFILL_ENABLED=True`) reconciles bookings whose
+`organizer_user_id`/`client_user_id` stayed NULL because event-users was down
+at ingress. Per cycle it selects a batch of incomplete bookings, extracts each
+missing participant's email from the latest stored event payload
+(`normalized.participants`), resolves email+role via event-users
+`GET /api/users/by-identity` (`adapters/users_client.py`), updates the rows in
+one transaction (`application/services/user_id_backfill.py`) and logs a
+summary. Transport errors abort the cycle (back-off until the next interval);
+the backfill never creates users. Protocols: `IUserResolver`
+(`interfaces/user_resolver.py`), `IUserIdBackfillRunner`
+(`interfaces/backfill.py`).
+
+### Queue Subscriptions
+
+event-saver does not route events — it only consumes. The queue set, bindings
+and arguments come from `event_schemas.queues.SAVER_QUEUES` (single source of
+truth): `events.booking.lifecycle.saver`, `events.chat.lifecycle`,
+`events.chat.activity`, `events.chat`, `events.meeting.lifecycle`,
+`events.notification.delivery`, `events.jitsi`, `events.mail`,
+`events.unrouted`. The consumer idempotently declares `events.dlx` and its own
+`<queue>.dlq` companions at startup (no startup-order dependency on
+event-receiver).
 
 ## Configuration
 
@@ -183,11 +199,14 @@ Settings are loaded from `.env` file via Pydantic Settings (`config.py`):
 - `LOG_LEVEL` - logging level (default: `INFO`)
 - `RABBIT_URL` - RabbitMQ AMQP URL (default: `amqp://guest:guest@localhost:5672/`)
 - `RABBIT_EXCHANGE` - exchange name (default: `events`)
-- `DEFAULT_RABBIT_DESTINATION` - fallback queue (default: `events.unrouted`)
-- `RABBIT_TOPOLOGY_QUEUES` - explicit list of queues to subscribe to
-- `GETSTREAM_USER_ID_ENCRYPTION_KEY` - key for decrypting GetStream user IDs
+- `RABBIT_PREFETCH_COUNT` - consumer QoS prefetch (default: `10`, keep within DB pool headroom)
+- `RABBIT_GRACEFUL_TIMEOUT` - seconds to drain in-flight handlers on shutdown (default: `30`)
+- `USER_ID_BACKFILL_ENABLED` - enable the periodic user_id backfill task (default: `False`)
+- `USER_ID_BACKFILL_INTERVAL_SECONDS` - pause between backfill cycles (default: `300`)
+- `USER_ID_BACKFILL_BATCH_SIZE` - incomplete bookings scanned per cycle (default: `100`)
+- `EVENT_USERS_API_URL` / `EVENT_USERS_API_TOKEN` - event-users base URL + static Bearer token; required when the backfill is enabled (fail-fast validated at DI wiring)
 
-Event routing rules have defaults but can be overridden via environment variables.
+Queues/bindings/arguments are NOT configurable — they come from `event_schemas.queues.SAVER_QUEUES`.
 
 ## Database Schema
 
@@ -195,21 +214,22 @@ Event routing rules have defaults but can be overridden via environment variable
 
 **`events`** - Raw event storage
 - Primary key: `event_id` (text)
-- Unique constraint: `(booking_id, event_type, source, hash)`
-- Indexes: `(booking_id, occurred_at DESC)`, `(event_type, occurred_at DESC)`
-- `hash` column: `md5(payload::text)` for deduplication
+- Partial unique index on `idempotency_key` (`idx_events_idempotency`)
+- Indexes: `(booking_id, occurred_at DESC)`, `(event_type, occurred_at DESC)`, partial on `trace_id`
+- `hash` column: informational payload digest (not used for dedup)
 
 **`bookings`** - Normalized booking data
 - Primary key: `id` (bigserial)
 - Unique: `booking_uid`
-- Tracks: status, organizer, client, start/end times, first/last seen
+- Tracks: status (`created`/`cancelled`/`rejected`), organizer/client UUIDs
+  (references event-users), start/end times, first/last seen
 
-**`participants`** - Users (organizer/client)
-- Primary key: `id` (bigserial)
-- Unique: `email`
-- Tracks: role, timezone
+**`booking_lifecycle_events`** - Booking timeline (action + details per lifecycle event)
 
 **`booking_organizer_history`** - Organizer reassignment audit trail
+
+There is no `participants` table — participants were replaced by
+`organizer_user_id`/`client_user_id` UUID columns (migration `28bba7523965`).
 
 ### Migration Chain
 
@@ -225,7 +245,7 @@ Migrations are in `alembic/versions/`:
 ### CloudEvents Format
 
 All messages use CloudEvents binary mode:
-- Headers: `ce-type`, `ce-source`, `ce-id`, `ce-time`, `ce-booking_id`, `ce-specversion`
+- Headers: `ce-type`, `ce-source`, `ce-id`, `ce-time`, `ce-bookingid`, `ce-specversion` (plus `ce-idempotencykey`, `ce-traceid`, `ce-spanid`)
 - Body: Event payload (data)
 
 The consumer (`adapters/consumer.py`) uses `from_http(headers=..., data=...)` to parse incoming messages.
@@ -252,15 +272,19 @@ When adding new features:
 
 ### Error Handling
 
-- Consumer logs exceptions and re-raises (FastStream handles retry/dead-letter)
-- Raw event insertion failures are logged with event metadata
-- Projection failures are caught to prevent blocking raw event storage
+- **Transient errors** (DB connectivity, pool/network timeouts): retried
+  in-process with exponential backoff (3 attempts), then NACK + requeue —
+  the broker redelivers; the message is never dead-lettered
+- **Poison messages** (CloudEvent parse errors, validation failures): rejected
+  immediately to `<queue>.dlq` on `events.dlx`
+- Projection failures are logged with full context and re-raised (the whole
+  message transaction rolls back)
 
 ## Important Files
 
 ### Entry Points
 - `main.py` - Application entry point, lifespan management
-- `config.py` - Settings and routing rules
+- `config.py` - Settings (Pydantic)
 - `ioc.py` - **DI container with clean architecture**
 
 ### Domain Layer (Business Logic)
@@ -281,7 +305,6 @@ When adding new features:
 - `PROJECT_CONTEXT.md` - Detailed project context (Russian)
 - `EVENTS_DIGEST.md` - Event payload schemas
 - `QUEUES_DIGEST.md` - Queue routing reference and event-to-queue mapping
-- `REFACTORING_SUMMARY.md` - Complete refactoring summary (before/after)
 - `docs/architecture/C4_DIAGRAMS.md` - C4 architecture diagrams (Context, Container, Component)
 - `docs/architecture/ARCHITECTURE_DECISION_RECORDS.md` - Key architectural decisions (ADRs)
 

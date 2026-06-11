@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import Any
 
+from event_schemas.envelope import unwrap_payload
 from event_schemas.types import EventType
 
 from event_saver.domain.models.event import ParsedEvent
@@ -15,6 +16,7 @@ _LIFECYCLE_TYPES = {
     EventType.BOOKING_RESCHEDULED,
     EventType.BOOKING_REASSIGNED,
     EventType.BOOKING_CANCELLED,
+    EventType.BOOKING_REJECTED,
     EventType.BOOKING_CLIENT_REASSIGNED,
 }
 
@@ -23,6 +25,7 @@ _ACTION_MAP: dict[str, str] = {
     EventType.BOOKING_RESCHEDULED: "rescheduled",
     EventType.BOOKING_REASSIGNED: "reassigned",
     EventType.BOOKING_CANCELLED: "cancelled",
+    EventType.BOOKING_REJECTED: "rejected",
     EventType.BOOKING_CLIENT_REASSIGNED: "client_reassigned",
 }
 
@@ -82,13 +85,21 @@ class LifecycleProjection(BaseProjection):
 
     @staticmethod
     def _extract_details(event: ParsedEvent) -> dict[str, Any] | None:
-        original = event.payload.get("original", {})
+        original = unwrap_payload(event.payload)
 
         if event.event_type == EventType.BOOKING_CREATED:
             return _pick(original, "start_time", "end_time")
 
         if event.event_type == EventType.BOOKING_RESCHEDULED:
-            return _pick(original, "start_time", "end_time", "previous_booking.start_time")
+            # previous_booking_uid links the NEW cal.com uid to the old one (rescheduleUid)
+            return _pick(
+                original,
+                "start_time",
+                "end_time",
+                "previous_start_time",
+                "previous_booking_uid",
+                "rescheduled_by",
+            )
 
         if event.event_type == EventType.BOOKING_REASSIGNED:
             normalized = event.payload.get("normalized", {})
@@ -99,7 +110,17 @@ class LifecycleProjection(BaseProjection):
             return None
 
         if event.event_type == EventType.BOOKING_CANCELLED:
-            return _pick(original, "cancellation_reason")
+            return _pick(original, "cancellation_reason", "cancelled_by")
+
+        if event.event_type == EventType.BOOKING_REJECTED:
+            return _pick(
+                original,
+                "rejection_type",
+                "rejection_reasons",
+                "available_from",
+                "has_active_booking",
+                "active_booking_start",
+            )
 
         if event.event_type == EventType.BOOKING_CLIENT_REASSIGNED:
             return _pick(original, "new_client_user_id", "requested_by")

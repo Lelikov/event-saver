@@ -6,8 +6,7 @@
 
 | Queue | Source Pattern | Type Pattern | Events |
 |---|---|---|---|
-| `events.booking.lifecycle` | `*` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` / `booking.reminder_sent` | lifecycle бронирования |
-| `events.booking.reminder` | `*` | `booking.reminder_sent` | отправка напоминаний |
+| `events.booking.lifecycle.saver` | `booking` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` / `booking.rejected` / `booking.client_reassigned` / `booking.reminder_sent` | lifecycle бронирования (своя очередь event-saver; event-booking слушает `events.booking.lifecycle.booking` с тем же routing key) |
 | `events.chat.lifecycle` | `*` | `chat.created` / `chat.deleted` | lifecycle чата |
 | `events.chat.activity` | `*` | `chat.message_sent` | активность в чате |
 | `events.meeting.lifecycle` | `*` | `meeting.url_created` / `meeting.url_deleted` | lifecycle meeting URL |
@@ -17,19 +16,17 @@
 | `events.chat` | `getstream` | `getstream.*` | события GetStream |
 | `events.unrouted` | fallback | fallback | все события без match по rules |
 
-## events.booking.lifecycle
+## events.booking.lifecycle.saver
 
+Очередь event-saver, привязана к routing key `events.booking.lifecycle`.
 События жизненного цикла бронирования:
 - `booking.created`
-- `booking.rescheduled`
+- `booking.rescheduled` (в `original` теперь есть `previous_start_time` и `previous_booking_uid` — старый uid cal.com)
 - `booking.reassigned`
 - `booking.cancelled`
-- `booking.reminder_sent`
-
-## events.booking.reminder
-
-События про отправку напоминаний:
-- `booking.reminder_sent`
+- `booking.rejected`
+- `booking.client_reassigned`
+- `booking.reminder_sent` (продюсера сейчас нет; очередь `events.booking.reminder` удалена)
 
 ## events.chat.lifecycle
 
@@ -75,7 +72,16 @@
 ## events.unrouted
 
 Fallback-очередь по умолчанию:
-- попадают события, которые не совпали ни с одним routing rule.
+- попадают события, которые не совпали ни с одним routing rule
+- включая неизвестные типы (например GetStream `member.added`) — payload сохраняется в `original`.
+
+## Очереди, которые event-saver НЕ слушает (осознанное решение)
+
+`events.notification.commands` и `events.user.email` — командные сообщения
+(императивы), а не факты. event-saver хранит факты; результирующие
+`notification.*.message_sent` попадают в `events.notification.delivery` и
+сохраняются. Если понадобится аудит команд — добавить отдельные очереди
+saver-а, привязанные к тем же routing key (см. docs/AUDIT.md).
 
 ---
 
@@ -105,7 +111,7 @@ Fallback-очередь по умолчанию:
   - `content-type` вынимается отдельно в параметр `content_type`.
 
 Для booking-событий обычно так:
-- **Headers**: `ce-type`, `ce-source`, `ce-id`, `ce-time`, `ce-booking_id`, `ce-specversion` (+ прочие системные при необходимости)
+- **Headers**: `ce-type`, `ce-source`, `ce-id`, `ce-time`, `ce-bookingid`, `ce-specversion` (+ прочие системные при необходимости)
 - **Payload (body/data)**: поля события **кроме** `booking_uid`.
 
 ### Входящий payload `/event/booking` (контракт источника)
@@ -188,5 +194,14 @@ Fallback-очередь по умолчанию:
 ### Исходящий payload (body/data) в RabbitMQ для booking endpoint
 
 Для всех событий выше действует правило:
-- `booking_uid` переносится в header `ce-booking_id`;
+- `booking_uid` переносится в header `ce-bookingid`;
 - в `body` остаются остальные поля из списка соответствующего события.
+
+## Каноническая топология (audit-v2)
+
+Очереди, биндинги и аргументы объявляются из `event_schemas.queues.SAVER_QUEUES`
+(см. `docs/audit/v2/CONTRACT_DECISIONS.md` в корне монорепо):
+- аргументы: `x-max-priority=10`, `x-dead-letter-exchange=events.dlx`,
+  `x-dead-letter-routing-key=<queue>.dlq`;
+- event-saver сам объявляет `events.dlx` и свои `*.dlq` на старте (идемпотентно);
+- локальный `routing.py` и дублирующие routing-правила удалены — источник истины один.

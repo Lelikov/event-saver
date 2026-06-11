@@ -32,30 +32,32 @@ class ParticipantExtractor:
         if not isinstance(participants_data, list):
             return None, None
 
-        organizer_user_id: uuid.UUID | None = None
-        client_user_id: uuid.UUID | None = None
+        user_id_by_role: dict[str, uuid.UUID] = {}
 
         for p in participants_data:
             if not isinstance(p, dict):
                 continue
 
             role = p.get("role")
-            raw_user_id = p.get("user_id")
-
-            user_id: uuid.UUID | None = None
-            if isinstance(raw_user_id, str):
-                try:
-                    user_id = uuid.UUID(raw_user_id)
-                except ValueError:
-                    continue
-            elif isinstance(raw_user_id, uuid.UUID):
-                user_id = raw_user_id
-            else:
+            if role not in (RecipientRole.ORGANIZER, RecipientRole.CLIENT):
                 continue
 
-            if role == RecipientRole.ORGANIZER:
-                organizer_user_id = user_id
-            elif role == RecipientRole.CLIENT:
-                client_user_id = user_id
+            user_id = _parse_uuid(p.get("user_id"))
+            if user_id is None:
+                continue
 
-        return organizer_user_id, client_user_id
+            user_id_by_role[role] = user_id
+
+        return user_id_by_role.get(RecipientRole.ORGANIZER), user_id_by_role.get(RecipientRole.CLIENT)
+
+
+def _parse_uuid(raw: Any) -> uuid.UUID | None:
+    """Parse a UUID from str or UUID input; return None for anything else."""
+    if isinstance(raw, uuid.UUID):
+        return raw
+    if not isinstance(raw, str):
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        return None

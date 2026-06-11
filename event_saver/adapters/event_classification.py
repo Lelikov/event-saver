@@ -7,18 +7,6 @@ from event_saver.interfaces import IBookingEventClassifier
 
 _JITSI_PREFIX = "jitsi."
 
-QUEUE_DOMAIN_MAP: dict[str, str] = {
-    "events.booking.lifecycle": "booking",
-    "events.booking.reminder": "booking",
-    "events.chat.lifecycle": "chat",
-    "events.chat.activity": "chat",
-    "events.chat": "chat",
-    "events.meeting.lifecycle": "meeting",
-    "events.notification.delivery": "notification",
-    "events.mail": "notification",
-    "events.jitsi": "video",
-}
-
 _JITSI_EVENT_TYPES: frozenset[str] = frozenset(et.value for et in EventType if et.value.startswith(_JITSI_PREFIX))
 
 _UNISENDER_ACTION_MAP: dict[str, str] = {

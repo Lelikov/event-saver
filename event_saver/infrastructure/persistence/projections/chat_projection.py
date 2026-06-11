@@ -162,7 +162,7 @@ class ChatReadUpdateProjection(BaseProjection):
             set is_read = true, updated_at = now()
             where booking_ref_id = :booking_ref_id
               and chat_event_type = 'message.new'
-              and user_id != :reader_user_id
+              and user_id is distinct from :reader_user_id
               and (
                   message_id = :last_read_message_id
                   or occurred_at < :read_occurred_at

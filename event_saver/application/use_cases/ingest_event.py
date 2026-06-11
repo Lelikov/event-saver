@@ -117,7 +117,7 @@ class IngestEventUseCase:
                 if new_client_id_str:
                     try:
                         new_client_uuid = uuid.UUID(new_client_id_str)
-                    except (ValueError, AttributeError):
+                    except ValueError, AttributeError:
                         new_client_uuid = None
                     if new_client_uuid:
                         await self._booking_repository.update_client(

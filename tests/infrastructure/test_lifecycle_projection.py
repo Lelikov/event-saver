@@ -32,7 +32,7 @@ _HANDLE_DEFAULTS: dict[str, Any] = {
     "booking_ref_id": 42,
     "organizer_user_id": None,
     "client_user_id": None,
-    "queue_name": "events.booking.lifecycle",
+    "queue_name": "events.booking.lifecycle.saver",
 }
 
 
@@ -52,6 +52,10 @@ class TestCanHandle:
     def test_returns_true_for_booking_cancelled(self) -> None:
         projection = LifecycleProjection()
         assert projection.can_handle(_make_event("booking.cancelled")) is True
+
+    def test_returns_true_for_booking_rejected(self) -> None:
+        projection = LifecycleProjection()
+        assert projection.can_handle(_make_event("booking.rejected")) is True
 
     def test_returns_false_for_booking_reminder_sent(self) -> None:
         projection = LifecycleProjection()
@@ -78,7 +82,7 @@ class TestHandleCreated:
         result = await projection.handle(event=event, **_HANDLE_DEFAULTS)
 
         assert result is not None
-        sql, params = result
+        _sql, params = result
         assert params["action"] == "created"
         details = json.loads(params["details"])
         assert details == {"start_time": "2026-01-20T10:00:00Z", "end_time": "2026-01-20T11:00:00Z"}
@@ -97,7 +101,7 @@ class TestHandleCreated:
             booking_ref_id=42,
             organizer_user_id=org_id,
             client_user_id=client_id,
-            queue_name="events.booking.lifecycle",
+            queue_name="events.booking.lifecycle.saver",
         )
 
         assert result is not None
@@ -115,7 +119,8 @@ class TestHandleRescheduled:
                 "original": {
                     "start_time": "2026-02-01T09:00:00Z",
                     "end_time": "2026-02-01T10:00:00Z",
-                    "previous_booking.start_time": "2026-01-20T09:00:00Z",
+                    "previous_start_time": "2026-01-20T09:00:00Z",
+                    "previous_booking_uid": "old-uid-123",
                 },
             },
         )
@@ -129,7 +134,8 @@ class TestHandleRescheduled:
         assert details == {
             "start_time": "2026-02-01T09:00:00Z",
             "end_time": "2026-02-01T10:00:00Z",
-            "previous_booking.start_time": "2026-01-20T09:00:00Z",
+            "previous_start_time": "2026-01-20T09:00:00Z",
+            "previous_booking_uid": "old-uid-123",
         }
 
 
@@ -158,6 +164,38 @@ class TestHandleReassigned:
         assert params["action"] == "reassigned"
         details = json.loads(params["details"])
         assert details == {"previous_organizer": prev_org_id}
+
+
+class TestHandleRejected:
+    @pytest.mark.anyio
+    async def test_extracts_rejection_details(self) -> None:
+        event = _make_event(
+            "booking.rejected",
+            payload={
+                "original": {
+                    "client_email": "client@example.com",
+                    "rejection_type": "no_slots",
+                    "rejection_reasons": ["volunteer_unavailable"],
+                    "available_from": "2026-02-01T00:00:00Z",
+                    "has_active_booking": True,
+                    "active_booking_start": "2026-01-25T10:00:00Z",
+                },
+            },
+        )
+        projection = LifecycleProjection()
+        result = await projection.handle(event=event, **_HANDLE_DEFAULTS)
+
+        assert result is not None
+        _, params = result
+        assert params["action"] == "rejected"
+        details = json.loads(params["details"])
+        assert details == {
+            "rejection_type": "no_slots",
+            "rejection_reasons": ["volunteer_unavailable"],
+            "available_from": "2026-02-01T00:00:00Z",
+            "has_active_booking": True,
+            "active_booking_start": "2026-01-25T10:00:00Z",
+        }
 
 
 class TestHandleCancelled:

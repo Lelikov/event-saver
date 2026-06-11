@@ -10,6 +10,20 @@ from event_saver.infrastructure.persistence.projections.base import BaseProjecti
 from event_saver.utils import parse_iso_datetime
 
 
+def _user_id_for_role(
+    *,
+    role: Any,
+    organizer_user_id: uuid.UUID | None,
+    client_user_id: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """Map a recipient role to the corresponding participant UUID."""
+    if role == RecipientRole.ORGANIZER:
+        return organizer_user_id
+    if role == RecipientRole.CLIENT:
+        return client_user_id
+    return None
+
+
 class EmailNotificationProjection(BaseProjection):
     """Projects email notification events to booking_email_notifications table."""
 
@@ -62,12 +76,10 @@ class EmailNotificationProjection(BaseProjection):
         trigger_event = original.get("trigger_event")
         email = original.get("email")
 
-        user_id = (
-            organizer_user_id
-            if role == RecipientRole.ORGANIZER
-            else client_user_id
-            if role == RecipientRole.CLIENT
-            else None
+        user_id = _user_id_for_role(
+            role=role,
+            organizer_user_id=organizer_user_id,
+            client_user_id=client_user_id,
         )
 
         return (
@@ -198,8 +210,11 @@ class TelegramNotificationProjection(BaseProjection):
         trigger_event = original.get("trigger_event")
         email = original.get("email")
 
-        user_id = organizer_user_id if role == RecipientRole.ORGANIZER else client_user_id
-
+        user_id = _user_id_for_role(
+            role=role,
+            organizer_user_id=organizer_user_id,
+            client_user_id=client_user_id,
+        )
         if user_id is None:
             return None
 
