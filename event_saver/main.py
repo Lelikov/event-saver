@@ -7,6 +7,9 @@ import structlog
 from dishka import make_async_container
 from dishka.integrations.fastapi import FastapiProvider, setup_dishka
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from event_saver.config import Settings
 from event_saver.interfaces.consumer import IEventConsumerRunner
@@ -46,3 +49,29 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(title="event-saver", version="0.1.0", lifespan=lifespan)
 setup_dishka(container=container, app=app)
+
+
+async def _check_database() -> bool:
+    """Verify PostgreSQL connectivity with a SELECT 1."""
+    try:
+        engine = await container.get(AsyncEngine)
+        async with engine.connect() as connection:
+            await connection.execute(text("select 1"))
+    except Exception:
+        logger.exception("Readiness check failed: database unreachable")
+        return False
+    return True
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Liveness probe: the process is up and serving HTTP."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready() -> JSONResponse:
+    """Readiness probe: verifies database connectivity."""
+    if not await _check_database():
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return JSONResponse(status_code=200, content={"status": "ready"})
