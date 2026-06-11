@@ -78,7 +78,7 @@ class TestHandleCreated:
         result = await projection.handle(event=event, **_HANDLE_DEFAULTS)
 
         assert result is not None
-        sql, params = result
+        _sql, params = result
         assert params["action"] == "created"
         details = json.loads(params["details"])
         assert details == {"start_time": "2026-01-20T10:00:00Z", "end_time": "2026-01-20T11:00:00Z"}

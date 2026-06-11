@@ -27,6 +27,5 @@ class Settings(BaseSettings):
     # Queues/bindings/arguments come from event_schemas.queues.SAVER_QUEUES (single source of truth)
     rabbit_url: AmqpDsn = "amqp://guest:guest@localhost:5672/"
     rabbit_exchange: str = "events"
-    getstream_user_id_encryption_key: str | None = None
 
     postgres_dsn: PostgresDsn = Field(strict=True)

@@ -26,7 +26,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
     setup_logger(log_level=log_level, console_render=False)
 
     logger.info(
-        "Starting event receiver application",
+        "Starting event-saver application",
         log_level=settings.log_level,
         debug=settings.debug,
         rabbit_exchange=settings.rabbit_exchange,
@@ -38,10 +38,10 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
     yield
 
-    logger.info("Shutting down event receiver application")
+    logger.info("Shutting down event-saver application")
     await consumer_runner.stop()
     await container.close()
-    logger.info("Event receiver application shutdown complete")
+    logger.info("event-saver application shutdown complete")
 
 
 app = FastAPI(title="event-saver", version="0.1.0", lifespan=lifespan)

@@ -52,7 +52,7 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
 
             @subscriber
             async def consume(
-                message: Any = Context("message"),
+                message: Any = Context("message"),  # noqa: B008
                 _queue_name: str = spec.name,
             ) -> None:
                 await self._consume_message(message=message, queue_name=_queue_name)
