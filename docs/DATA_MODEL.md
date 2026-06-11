@@ -148,10 +148,10 @@ The immutable append-only log of all received CloudEvents.
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | `event_id` | text | PK | CloudEvent `ce-id` |
-| `booking_id` | text | nullable | Extracted from `ce-booking_id` |
+| `booking_id` | text | nullable | Extracted from `ce-bookingid` |
 | `event_type` | text | not null | CloudEvent `ce-type` |
 | `source` | text | not null | CloudEvent `ce-source` |
-| `hash` | text | not null | `md5(ujson.dumps(payload))` |
+| `hash` | text | not null | `md5(json.dumps(payload, sort_keys=True))` — informational, not a dedup key |
 | `occurred_at` | timestamptz | not null | CloudEvent `ce-time` |
 | `received_at` | timestamptz | not null, default `now()` | Server-side receipt time |
 | `payload` | jsonb | not null | Event data body |
@@ -163,8 +163,9 @@ The immutable append-only log of all received CloudEvents.
 **Indexes:**
 - `ix_events_booking_id_occurred_at_desc` on `(booking_id, occurred_at DESC)`
 - `ix_events_event_type_occurred_at_desc` on `(event_type, occurred_at DESC)`
-- `uq_events_booking_id_event_type_source_hash` unique on `(booking_id, event_type, source, hash)` -- legacy dedup
-- Unique on `idempotency_key` (added in migration `c5d7f9e3a1b2`)
+- `idx_events_idempotency` partial unique on `idempotency_key` (WHERE idempotency_key IS NOT NULL, migration `c5d7f9e3a1b2`)
+- `idx_events_trace_id` partial on `trace_id`
+- The legacy `uq_events_booking_id_event_type_source_hash` unique index was dropped (migration `a9d4c1f0b7e2`); `hash` is informational only
 
 Reference: `db/models.py:11-46`
 
@@ -336,13 +337,12 @@ Records every lifecycle action (created, cancelled, rescheduled, reassigned) as 
 
 ## Business Invariants at DB Level
 
-1. **Event uniqueness (idempotency)**: `UNIQUE(idempotency_key)` ensures exactly-once storage when key is present
-2. **Legacy event uniqueness**: `UNIQUE(booking_id, event_type, source, hash)` prevents duplicate payloads per booking
-3. **Booking identity**: `UNIQUE(booking_uid)` ensures one booking record per external ID
-4. **Email notification identity**: `UNIQUE(job_id)` maps one notification record per email job
-5. **Chat/Video/Telegram uniqueness**: `UNIQUE(raw_event_id)` or `UNIQUE(source_event_id)` on all projection tables prevents duplicate projections from reprocessed events
-6. **Meeting link uniqueness**: `UNIQUE(booking_ref_id, user_id)` ensures one link per user per booking
-7. **Organizer history**: Insert-only-if-changed logic prevents duplicate consecutive entries
+1. **Event uniqueness (idempotency)**: partial `UNIQUE(idempotency_key)` ensures exactly-once storage when key is present; the `event_id` PK absorbs broker redelivery. Inserts use a bare `ON CONFLICT DO NOTHING`
+2. **Booking identity**: `UNIQUE(booking_uid)` ensures one booking record per external ID
+3. **Email notification identity**: `UNIQUE(job_id)` maps one notification record per email job
+4. **Chat/Video/Telegram uniqueness**: `UNIQUE(raw_event_id)` or `UNIQUE(source_event_id)` on all projection tables prevents duplicate projections from reprocessed events
+5. **Meeting link uniqueness**: `UNIQUE(booking_ref_id, user_id)` ensures one link per user per booking
+6. **Organizer history**: Insert-only-if-changed logic prevents duplicate consecutive entries
 
 ---
 
@@ -368,6 +368,9 @@ Ordered by dependency (each revision depends on the one above):
 | 14 | `f3a9b2c1d4e5` | Add `user_id` to participants / `booking_email_status_history` table |
 | 15 | `28bba7523965` | Remove `participants` table, add UUID columns to bookings |
 | 16 | `ca7326cf2ec5` | Create `booking_lifecycle_events` table |
-| 17 | `2af87f34c2ff` | Add indexes to `booking_lifecycle_events` |
+| 17 | `2af87f34c2ff` | Merge event-admin and lifecycle heads |
+| 18 | `a1b2c3d4e5f6` | Add `recipient_email` to notification tables |
+| 19 | `16939138e5a7` | Merge recipient_email migration head |
+| 20 | `a9d4c1f0b7e2` | Drop legacy `(booking_id, event_type, source, hash)` dedup index |
 
 Reference: `alembic/versions/`

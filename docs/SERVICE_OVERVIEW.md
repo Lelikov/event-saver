@@ -8,7 +8,7 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 
 - Subscribe to RabbitMQ queues and consume CloudEvents messages
 - Parse and normalize incoming events into domain models
-- Deduplicate events (idempotency key or payload hash)
+- Deduplicate events (event_id PK + idempotency key, bare ON CONFLICT DO NOTHING)
 - Persist raw events to the `events` table
 - Extract participant UUIDs and booking metadata from payloads
 - Upsert booking records and organizer history
@@ -20,7 +20,7 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 - HTTP ingress (handled by `event-receiver`)
 - Read API (handled by `event-admin`)
 - User/contact management (handled by `event-users`)
-- Publishing events to RabbitMQ for other consumers (the wired `EventRouter`/`CloudEventPublisher` is unused)
+- Publishing events to RabbitMQ (event-saver only consumes; it does not route)
 - Frontend concerns
 
 ## Runtime Dependencies
@@ -37,13 +37,12 @@ Asynchronous event ingestion and projection service. Consumes CloudEvents from R
 | `POSTGRES_DSN` | Yes | - | PostgreSQL connection string |
 | `RABBIT_URL` | No | `amqp://guest:guest@localhost:5672/` | RabbitMQ AMQP URL |
 | `RABBIT_EXCHANGE` | No | `events` | Exchange name |
-| `DEFAULT_RABBIT_DESTINATION` | No | `events.unrouted` | Fallback queue |
-| `RABBIT_TOPOLOGY_QUEUES` | No | (derived from routing rules) | Explicit queue list |
-| `GETSTREAM_USER_ID_ENCRYPTION_KEY` | No | - | Decrypt GetStream user IDs |
+| `RABBIT_PREFETCH_COUNT` | No | `10` | Consumer QoS prefetch (keep within DB pool headroom) |
+| `RABBIT_GRACEFUL_TIMEOUT` | No | `30` | Seconds to drain in-flight handlers on shutdown |
 | `DEBUG` | No | `False` | Enable debug mode |
 | `LOG_LEVEL` | No | `INFO` | Structlog level |
 
-Reference: `event_saver/config.py:93-144`
+Reference: `event_saver/config.py`. Queue topology comes from `event_schemas.queues.SAVER_QUEUES`.
 
 ## Clean Architecture Layer Map
 
@@ -111,23 +110,27 @@ graph TB
 | Infrastructure | `infrastructure/persistence/` (facade, repositories, projections) | ~1300 |
 | Adapters | `adapters/consumer.py`, `adapters/sql.py` | ~150 |
 | Interfaces | `interfaces/*.py` (7 protocol files) | ~100 |
-| DI/Config | `ioc.py`, `config.py`, `routing.py`, `event_types.py` | ~280 |
+| DI/Config | `ioc.py`, `config.py` | ~280 |
+
+## HTTP Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Liveness: process up, HTTP serving |
+| GET | `/ready` | Readiness: `SELECT 1` against PostgreSQL (503 when unreachable) |
+
+## Reliability
+
+- **Prefetch (QoS)**: `RABBIT_PREFETCH_COUNT` (default 10) bounds concurrent handlers within DB pool headroom
+- **Transient failures** (DB connectivity, pool/network timeouts): 3 in-process attempts with exponential backoff, then NACK + requeue — never dead-lettered
+- **Poison messages** (parse/validation errors): rejected to `<queue>.dlq` on `events.dlx`
+- **Graceful shutdown**: `RABBIT_GRACEFUL_TIMEOUT` (default 30s) drains in-flight handlers
 
 ## Known Limitations
 
-Source: `docs/audit/raw/event-saver_audit.md`
-
-| Severity | Issue | Location | Status |
-|---|---|---|---|
-| MEDIUM | `BookingDataExtractor` only maps two event types to status | `domain/services/booking_extractor.py:9-12` | Open (by design: COALESCE preserves existing) |
-| LOW | No test suite exists for projections | `tests/` | Open |
-| ~~HIGH~~ | ~~Application layer imports concrete classes~~ | - | Resolved 2026-04-21 |
-| ~~HIGH~~ | ~~No DLQ configured~~ | - | Resolved 2026-04-21 |
-| ~~MEDIUM~~ | ~~Projection failures silently swallowed~~ | - | Resolved 2026-04-21 |
-| ~~MEDIUM~~ | ~~Deduplication hash mismatch~~ | - | Resolved 2026-04-21 |
-| ~~CRITICAL~~ | ~~Projections read payload from wrong level (NULL values)~~ | - | Resolved 2026-04-22 |
-| ~~MEDIUM~~ | ~~MeetingLinkProjection ignores url_deleted~~ | - | Resolved 2026-04-22 |
-| ~~MEDIUM~~ | ~~BookingTimelineClassifier reads getstream type from wrong level~~ | - | Resolved 2026-04-22 |
+See `docs/AUDIT.md` (audit-v2, 2026-06-11) — all findings resolved. Remaining
+platform-level TODO: DLQ alerting/re-shovel tooling (DLQs carry 24h message TTL
+per CONTRACT_DECISIONS D2, so unattended poison messages expire).
 
 ### Payload Structure Convention
 

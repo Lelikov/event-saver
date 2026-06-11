@@ -6,7 +6,7 @@
 
 | Queue | Source Pattern | Type Pattern | Events |
 |---|---|---|---|
-| `events.booking.lifecycle.saver` | `booking` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` / `booking.rejected` / `booking.reminder_sent` | lifecycle бронирования (своя очередь event-saver; event-booking слушает `events.booking.lifecycle.booking` с тем же routing key) |
+| `events.booking.lifecycle.saver` | `booking` | `booking.created` / `booking.rescheduled` / `booking.reassigned` / `booking.cancelled` / `booking.rejected` / `booking.client_reassigned` / `booking.reminder_sent` | lifecycle бронирования (своя очередь event-saver; event-booking слушает `events.booking.lifecycle.booking` с тем же routing key) |
 | `events.chat.lifecycle` | `*` | `chat.created` / `chat.deleted` | lifecycle чата |
 | `events.chat.activity` | `*` | `chat.message_sent` | активность в чате |
 | `events.meeting.lifecycle` | `*` | `meeting.url_created` / `meeting.url_deleted` | lifecycle meeting URL |
@@ -25,6 +25,7 @@
 - `booking.reassigned`
 - `booking.cancelled`
 - `booking.rejected`
+- `booking.client_reassigned`
 - `booking.reminder_sent` (продюсера сейчас нет; очередь `events.booking.reminder` удалена)
 
 ## events.chat.lifecycle
@@ -71,7 +72,16 @@
 ## events.unrouted
 
 Fallback-очередь по умолчанию:
-- попадают события, которые не совпали ни с одним routing rule.
+- попадают события, которые не совпали ни с одним routing rule
+- включая неизвестные типы (например GetStream `member.added`) — payload сохраняется в `original`.
+
+## Очереди, которые event-saver НЕ слушает (осознанное решение)
+
+`events.notification.commands` и `events.user.email` — командные сообщения
+(императивы), а не факты. event-saver хранит факты; результирующие
+`notification.*.message_sent` попадают в `events.notification.delivery` и
+сохраняются. Если понадобится аудит команд — добавить отдельные очереди
+saver-а, привязанные к тем же routing key (см. docs/AUDIT.md).
 
 ---
 

@@ -1,99 +1,106 @@
-# event-saver Audit Findings
+# event-saver Audit Findings (audit-v2)
 
-Audited: 2026-04-20
+Audited: 2026-06-11 (full re-audit; supersedes the 2026-04-20 report)
+Fix branch: `audit-fixes`
 
----
-
-## HIGH
-
----
-
-[HIGH] `booking.rescheduled` event type is not defined in `EventType` enum — a bare string literal is used
-
-Services affected: event-saver
-Location: `event_saver/config.py:18`, `event_saver/event_types.py`
-Description: `config.py` hardcodes `type_pattern="booking.rescheduled"` as a raw string literal in the default routing rules. Every other event type in the same function uses `EventType.*` enum members. `BOOKING_RESCHEDULED` is missing from `EventType`. This string will silently never match if it ever drifts from the actual event type emitted by `event-receiver`, and it cannot be refactored by IDE tooling. It is also inconsistent with `booking.reminder_sent` which is similarly omitted from the enum but referenced by both a bare string and a duplicate `EventType.BOOKING_REMINDER_SENT` rule (lines 14-20 in config.py define `BOOKING_REMINDER_SENT` → `events.booking.lifecycle` AND `booking.reminder_sent` → `events.booking.reminder`, meaning `reminder_sent` events match the lifecycle rule first and never reach the reminder queue).
-Recommendation: Add `BOOKING_RESCHEDULED = "booking.rescheduled"` to the `EventType` enum and replace the string literal in `config.py`. Also audit the duplicate `BOOKING_REMINDER_SENT` routing rules — if `events.booking.reminder` is a real consumer queue it will never receive messages because `events.booking.lifecycle` matches first.
+All findings of every severity were fixed or explicitly closed. Cross-service
+contract items follow `../docs/audit/v2/CONTRACT_DECISIONS.md`.
 
 ---
 
-## MEDIUM
+## HIGH — all resolved
+
+### booking.rejected consumed but never reflected — RESOLVED 2026-06-11
+
+`_STATUS_BY_EVENT_TYPE` lacked `BOOKING_REJECTED` and `LifecycleProjection`
+omitted it from `_LIFECYCLE_TYPES`/`_ACTION_MAP`, so a rejected booking kept
+status `created` and had no timeline row. Fixed: status maps to `rejected`,
+lifecycle projection writes action `rejected` with `BookingRejectedPayload`
+details (`rejection_type`, `rejection_reasons`, `available_from`,
+`has_active_booking`, `active_booking_start`). Commit `f581bdc`.
+
+### No retry path for transient failures — RESOLVED 2026-06-11
+
+Any handler exception rejected the message into the unconsumed 24h-TTL DLQ
+(permanent loss during a DB outage). Fixed in `adapters/consumer.py`:
+transient errors (DB connectivity, pool/network timeouts) are retried
+in-process with exponential backoff (3 attempts) and then NACKed with
+`requeue=True`; only poison messages (parse/validation errors) are rejected
+to the DLQ. Commit `26df5cb`. DLQ args (24h TTL) stay canonical per
+CONTRACT_DECISIONS D2; a DLQ consumer/alerting remains a platform-level TODO.
+
+### No consumer prefetch (QoS) — RESOLVED 2026-06-11
+
+FastStream default channel had unlimited prefetch: a backlog flood exhausted
+the DB pool and defeated `x-max-priority`. Fixed: `RabbitRouter` is built with
+`default_channel=Channel(prefetch_count=RABBIT_PREFETCH_COUNT)` (default 10,
+within pool headroom) and `graceful_timeout=RABBIT_GRACEFUL_TIMEOUT`
+(default 30s). Commit `eae3a76`.
 
 ---
 
-[MEDIUM] `BookingDataExtractor` only maps two event types to a status (`created`, `cancelled`) — `reassigned`, `rescheduled`, `reminder_sent` produce `status=None`
+## MEDIUM — all resolved
 
-Services affected: event-saver
-Location: `event_saver/domain/services/booking_extractor.py:9-12`
-Description: `_STATUS_BY_EVENT_TYPE` only covers `booking.created` → `"created"` and `booking.cancelled` → `"cancelled"`. Events like `booking.events.v1.booking.reassigned.create`, `booking.rescheduled`, and `booking.events.v1.booking.reminder_sent.create` produce `BookingData(status=None)`. When `BookingRepository.upsert()` receives `current_status=None`, the `ON CONFLICT ... DO UPDATE SET current_status = coalesce(excluded.current_status, bookings.current_status)` clause preserves the existing value, so a reassignment event will not flip the status. This is arguably correct for `reassigned` (status does not change) but may be wrong for `rescheduled` (which could warrant a dedicated status) and is certainly confusing.
-Recommendation: Document the intentional omissions explicitly in `_STATUS_BY_EVENT_TYPE` with inline comments, or add entries for all expected event types (even if they map to the same existing status). This makes the mapping self-documenting rather than appearing incomplete.
+### events.dlx / DLQs never declared by event-saver — RESOLVED (contracts wave)
 
----
+`RabbitEventConsumerRunner._ensure_dead_letter_topology()` idempotently
+declares `events.dlx` and the service's own DLQs at startup; queue specs come
+from `event_schemas.queues.SAVER_QUEUES`. Commit `f61f098` (contracts wave).
 
-[MEDIUM] `IngestEventUseCase` skips projections entirely when `booking_ref_id` comes back `None` after `get_or_none` returns `None` but `upsert` also somehow fails
+### previous_booking flat-key lookup — RESOLVED (contracts wave)
 
-Services affected: event-saver
-Location: `event_saver/application/use_cases/ingest_event.py:93-127`
-Description: If `booking_repository.upsert()` raises a `RuntimeError`, projections are never executed but the raw event has already been saved. The partial state is not rolled back atomically. There is no clear handling of the case where the booking cannot be upserted.
-Recommendation: Add explicit handling (or at least a log+metric) if `upsert` raises. Ensure the session lifecycle guarantees atomic rollback on failure.
+`BookingRescheduledPayload` now carries top-level `previous_start_time` and
+`previous_booking_uid` (cal.com `rescheduleUid`); the lifecycle projection
+picks them flat and the test codifies the canonical shape. Commit `f61f098`.
 
----
+### Alembic ORM models drifted from real schema — RESOLVED 2026-06-11
 
-## LOW
+`db/models.py` now matches the migration chain: `events` gained
+`idempotency_key`/`trace_id`/`span_id`/`dataschema` plus the
+`idx_events_idempotency` (partial unique) and `idx_events_trace_id` indexes;
+`BookingLifecycleEvent` model added. Guard tests in `tests/test_db_models.py`
+fail on future drift. Commit `a9f911d`.
 
----
+### Duplicate BOOKING_REMINDER_SENT rules / stale pseudo-routing table — RESOLVED (contracts wave)
 
-[LOW] `_parse_occurred_at` logic is duplicated between `consumer.py` and `domain/services/event_parser.py`
+`routing.py`, `EventRouter`, `RoutingConfig` and `Settings.routing` were
+deleted; the consumer subscribes to the explicit `SAVER_QUEUES` list from
+`event_schemas`. Closes the April H-10 residue. Commit `f61f098`.
 
-Services affected: event-saver
-Location: `event_saver/adapters/consumer.py:21-29`, `event_saver/domain/services/event_parser.py:70-79`
-Description: Both `consumer.py` and `EventParser` contain an identical `_parse_occurred_at` function. `consumer.py` parses the timestamp before passing it to `event_store.save_event()`, and `EventParser.parse()` parses it again. Since the consumer already ensures it is a timezone-aware `datetime`, the second parse is a no-op but the duplication is a maintenance hazard.
-Recommendation: Remove `_parse_occurred_at` from `consumer.py`. Pass `event["time"]` directly (as the raw CloudEvents time value) and let `EventParser` do the single authoritative parse.
+### Test coverage gaps (April) — RESOLVED 2026-06-11
 
----
-
-[LOW] No tests exist anywhere in the service
-
-Services affected: event-saver
-Location: entire `event_saver/` directory
-Description: No test directory, test files, or pytest configuration were found in the service. The domain layer (`EventParser`, `ParticipantExtractor`, `BookingDataExtractor`) was designed to be testable without infrastructure, but remains untested. The projection handlers are also untested. Given this is pre-production, the lack of tests is a significant risk ahead of any first deployment.
-Recommendation: Create `tests/unit/` for domain and projection handler tests and `tests/integration/` for repository tests against a real PostgreSQL instance (using `pytest-asyncio` + `testcontainers` or a Docker Compose fixture). Priority: `EventParser` hash computation (ties to deduplication correctness), `ProjectionExecutor` exception handling (verifies isolation behaviour), and `EventRepository.save` idempotency.
+Added unit tests for `EventRepository`, `BookingRepository`,
+`IngestEventUseCase`, `RabbitEventConsumerRunner` (retry/poison/closure
+factory), chat/meeting/video/notification projections, broker construction
+and `db/models.py` drift. Suite: 100 tests. Commits `0d10102`..`04a0bf9`.
 
 ---
 
-## Summary
+## LOW — all resolved
 
-| Severity | Count |
+| Finding | Resolution |
 |---|---|
-| HIGH | 1 |
-| MEDIUM | 2 |
-| LOW | 2 |
-| **Total** | **5** |
-
-### Key Observations
-
-1. **No tests exist** — the service is well-architected for testability but untested.
-
-2. **`BookingDataExtractor` status mapping** is intentionally incomplete by design (COALESCE preserves existing status), but the omissions should be documented inline.
+| Dual dedup paths could crash; NULL-key events never deduped | Single `INSERT ... ON CONFLICT DO NOTHING` (suppresses PK + idempotency-key violations); legacy 4-column unique index dropped by migration `a9d4c1f0b7e2`. Commit `ed675bd` |
+| Migration-backfilled hash != application hash | Moot: hash is informational only after the legacy dedup index drop (`a9d4c1f0b7e2`) |
+| Stale routing config / EventRouter dead code | Deleted in contracts wave (`f61f098`) |
+| Dead code: `decode_user_id`, `getstream_user_id_encryption_key`, `QUEUE_DOMAIN_MAP` | Deleted; `cryptography` dependency removed. Commit `b4c9332` |
+| ChatReadUpdateProjection never marks NULL user_id rows read | `user_id is distinct from :reader_user_id`. Commit `62a0fb6` |
+| Style: elif/else chains, nested ternaries, 27 ruff errors | Ruff clean; guard clauses + `_parse_uuid`/`_user_id_for_role` helpers. Commit `b4c9332` |
+| Doc/code drift (participants table, dedup formula, "FastStream handles retry", stale one-off reports) | CLAUDE.md/digests/docs rewritten; stale reports deleted (this commit) |
+| No health/readiness endpoint | `GET /health` + `GET /ready` (SELECT 1). Commit `abc7075` |
+| `_queue_name` default parameter treated as body field | Closure factory `_make_handler(queue_name)`. Commit `26df5cb` |
+| `get_or_none` compared against renamed lifecycle queue (regression risk) | Compares `BOOKING_LIFECYCLE_SAVER_QUEUE.name` from event_schemas. Commit `0d10102` |
 
 ---
 
-## Resolved Findings
+## Accepted / documented decisions
 
-| ID | Finding | Resolution | Date |
-|---|---|---|---|
-| C-5 | SqlExecutor auto-commit breaks atomicity | Was already fixed: execute() has no commit(), single commit in event_store_facade | 2026-04-21 |
-| H-3 | Missing BOOKING_RESCHEDULED in EventType | Was already present in event-schemas types.py | 2026-04-21 |
-| H-1 | Application layer imports concrete infrastructure | Replaced with IEventRepository, IBookingRepository, IProjectionHandler protocols | 2026-04-21 |
-| H-4 | Orphaned IEventProjectionStatementFactory | Removed along with all dead code (publisher, topology manager, unused interfaces) | 2026-04-21 |
-| M-2 | Projection failures silently swallowed | Added re-raise after logging, failures now trigger DLQ | 2026-04-21 |
-| M-1 | Deduplication hash mismatch | Replaced ujson.dumps with json.dumps(sort_keys=True) | 2026-04-21 |
-| M-4 | TelegramNotificationProjection NULL user_id | Was already fixed: null check at line 189 | 2026-04-21 |
-| M-6 | declare=False on queues | Was already changed to declare=True | 2026-04-21 |
-| L-1 | ioc_new.py references | No references found in current CLAUDE.md | 2026-04-21 |
-| L-3 | execute_in_transaction unused | Removed from SqlExecutor and ISqlExecutor | 2026-04-21 |
-| L-4 | EventRouter/CloudEventPublisher wired but unused | Removed publisher.py, routing interfaces, topology manager | 2026-04-21 |
-| L-6 | QUEUES_DIGEST.md incomplete | Synced with actual config.py routing rules | 2026-04-21 |
-| NEW-1 | All projections (except VideoEventProjection) read payload fields from top level instead of `original` — silently producing NULLs | Fixed: all projections now use `payload.get("original", payload)` pattern | 2026-04-22 |
-| NEW-2 | BookingTimelineClassifier reads getstream `type` from wrong payload level | Fixed: `_extract_action_by_source` and `_extract_action_by_queue_chat` now read from `original` | 2026-04-22 |
-| NEW-3 | MeetingLinkProjection ignores `meeting.url_deleted` events — deleted links persist in DB | Fixed: added `MEETING_URL_DELETED` handling with DELETE statement | 2026-04-22 |
+- **`events.notification.commands` and `events.user.email` are not persisted
+  by event-saver.** They are command messages (imperatives), not facts; the
+  system of record stores facts. The resulting `notification.*.message_sent`
+  facts ARE persisted via `events.notification.delivery`. If a full command
+  audit trail is ever needed, add saver-owned queues bound to those routing
+  keys (see QUEUES_DIGEST.md).
+- **DLQ message TTL (24h) is canonical** per CONTRACT_DECISIONS D2. With the
+  transient-retry fix, only poison messages reach the DLQ; alerting/re-shovel
+  tooling is tracked at the platform level, not per-service.
