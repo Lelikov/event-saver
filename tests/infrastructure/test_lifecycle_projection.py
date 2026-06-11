@@ -32,7 +32,7 @@ _HANDLE_DEFAULTS: dict[str, Any] = {
     "booking_ref_id": 42,
     "organizer_user_id": None,
     "client_user_id": None,
-    "queue_name": "events.booking.lifecycle",
+    "queue_name": "events.booking.lifecycle.saver",
 }
 
 
@@ -101,7 +101,7 @@ class TestHandleCreated:
             booking_ref_id=42,
             organizer_user_id=org_id,
             client_user_id=client_id,
-            queue_name="events.booking.lifecycle",
+            queue_name="events.booking.lifecycle.saver",
         )
 
         assert result is not None

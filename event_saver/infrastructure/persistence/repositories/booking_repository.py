@@ -3,6 +3,8 @@
 import uuid
 from datetime import datetime
 
+from event_schemas.queues import BOOKING_LIFECYCLE_SAVER_QUEUE
+
 from event_saver.domain.models.booking import BookingData
 from event_saver.interfaces.sql import ISqlExecutor
 
@@ -91,8 +93,12 @@ class BookingRepository:
         booking_id: str,
         queue_name: str,
     ) -> int | None:
-        """Get booking ID if exists, respecting queue routing."""
-        if queue_name == "events.booking.lifecycle":
+        """Get booking ID if exists, respecting queue routing.
+
+        Lifecycle events always force an upsert (they carry status/time changes),
+        so for the saver's booking-lifecycle queue this returns None.
+        """
+        if queue_name == BOOKING_LIFECYCLE_SAVER_QUEUE.name:
             return None
         return await self.find_by_booking_uid(booking_id)
 

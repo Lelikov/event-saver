@@ -56,7 +56,7 @@ class TestExecuteProjections:
 
         await executor.execute_projections(
             event=_make_event(),
-            queue_name="events.booking.lifecycle",
+            queue_name="events.booking.lifecycle.saver",
             booking_ref_id=1,
             organizer_user_id=uuid.uuid4(),
             client_user_id=uuid.uuid4(),
@@ -73,7 +73,7 @@ class TestExecuteProjections:
 
         await executor.execute_projections(
             event=_make_event(),
-            queue_name="events.booking.lifecycle",
+            queue_name="events.booking.lifecycle.saver",
             booking_ref_id=1,
             organizer_user_id=None,
             client_user_id=None,
@@ -90,7 +90,7 @@ class TestExecuteProjections:
 
         await executor.execute_projections(
             event=_make_event(),
-            queue_name="events.booking.lifecycle",
+            queue_name="events.booking.lifecycle.saver",
             booking_ref_id=1,
             organizer_user_id=None,
             client_user_id=None,
@@ -108,7 +108,7 @@ class TestExecuteProjections:
         with pytest.raises(ValueError, match="projection broke"):
             await executor.execute_projections(
                 event=_make_event(),
-                queue_name="events.booking.lifecycle",
+                queue_name="events.booking.lifecycle.saver",
                 booking_ref_id=1,
                 organizer_user_id=None,
                 client_user_id=None,
