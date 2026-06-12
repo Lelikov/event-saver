@@ -335,6 +335,27 @@ Records every lifecycle action (created, cancelled, rescheduled, reassigned) as 
 
 ---
 
+### `blacklist_entries` — booking blacklist
+
+Owned by event-admin at runtime (writes are a sanctioned exception, same as `admin_users`); event-booking reads it through the event-admin API. event-saver only owns the migration and drift-guard model.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | uuid | PK, default `gen_random_uuid()` |
+| `field` | text | not null (open string; `client_email` today) |
+| `value` | text | not null (stored lowercased for `client_email`) |
+| `is_active` | boolean | not null, default `true` |
+| `active_from` | timestamptz | nullable (NULL = unbounded) |
+| `active_until` | timestamptz | nullable (NULL = unbounded) |
+| `comment` | text | nullable |
+| `created_by` | text | not null |
+| `created_at` | timestamptz | not null, default `now()` |
+| `updated_at` | timestamptz | not null, default `now()` |
+
+**Indexes:** `ix_blacklist_entries_field_lower_value` on `(field, lower(value))`
+
+---
+
 ## Business Invariants at DB Level
 
 1. **Event uniqueness (idempotency)**: partial `UNIQUE(idempotency_key)` ensures exactly-once storage when key is present; the `event_id` PK absorbs broker redelivery. Inserts use a bare `ON CONFLICT DO NOTHING`
@@ -372,5 +393,6 @@ Ordered by dependency (each revision depends on the one above):
 | 18 | `a1b2c3d4e5f6` | Add `recipient_email` to notification tables |
 | 19 | `16939138e5a7` | Merge recipient_email migration head |
 | 20 | `a9d4c1f0b7e2` | Drop legacy `(booking_id, event_type, source, hash)` dedup index |
+| 21 | `d8f2a6c41b39` | Create `blacklist_entries` table (written by event-admin, read by event-booking via the event-admin API) |
 
 Reference: `alembic/versions/`

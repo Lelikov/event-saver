@@ -306,3 +306,46 @@ class BookingLifecycleEvent(Base):
         UniqueConstraint("raw_event_id", name="uq_booking_lifecycle_events_raw_event_id"),
         Index("ix_ble_booking_ref_occurred_at", "booking_ref_id", text("occurred_at")),
     )
+
+
+class BlacklistEntry(Base):
+    """Booking blacklist entry.
+
+    The table lives in the main DB (migrations owned by event-saver), but it is
+    written by event-admin (sanctioned exception, same as admin_users) and read
+    by event-booking via the event-admin HTTP API. event-saver itself never
+    reads or writes it; the model exists only for the autogenerate drift-guard.
+    """
+
+    __tablename__ = "blacklist_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    field: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    active_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_blacklist_entries_field_lower_value",
+            "field",
+            text("lower(value)"),
+        ),
+    )

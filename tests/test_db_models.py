@@ -19,6 +19,7 @@ _EXPECTED_TABLES = {
     "booking_chat_events",
     "booking_video_events",
     "booking_lifecycle_events",
+    "blacklist_entries",
 }
 
 
@@ -61,3 +62,22 @@ class TestMetadataCoverage:
         }
         fk_targets = {fk.target_fullname for fk in table.foreign_keys}
         assert fk_targets == {"bookings.id", "events.event_id"}
+
+    def test_blacklist_entries_matches_migration(self) -> None:
+        table = Base.metadata.tables["blacklist_entries"]
+        columns = set(table.columns.keys())
+
+        assert columns == {
+            "id",
+            "field",
+            "value",
+            "is_active",
+            "active_from",
+            "active_until",
+            "comment",
+            "created_by",
+            "created_at",
+            "updated_at",
+        }
+        index_names = {idx.name for idx in table.indexes}
+        assert index_names == {"ix_blacklist_entries_field_lower_value"}
