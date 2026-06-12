@@ -32,6 +32,8 @@ class TestReady:
         response = await main.ready()
 
         assert response.status_code == 200
+        assert b'"status":"ready"' in response.body
+        assert b'"database":true' in response.body
 
     @pytest.mark.anyio
     async def test_unavailable_when_database_down(self, monkeypatch) -> None:
@@ -42,3 +44,5 @@ class TestReady:
         response = await main.ready()
 
         assert response.status_code == 503
+        assert b'"status":"not_ready"' in response.body
+        assert b'"database":false' in response.body

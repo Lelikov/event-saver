@@ -4,6 +4,13 @@
 
 **event-saver exposes no public HTTP API.** All processing is driven by RabbitMQ message consumption. There are no HTTP endpoints for event ingestion, querying, or proxying.
 
+The only HTTP endpoints are health probes (`main.py`):
+
+| Endpoint | Probe | Behaviour |
+|---|---|---|
+| `GET /health` | Liveness (k8s `livenessProbe`) | Always `200 {"status": "ok"}`; no dependency calls |
+| `GET /ready` | Readiness (k8s `readinessProbe`) | `SELECT 1` against PostgreSQL; `200 {"status": "ready", "checks": {"database": true}}` or `503 {"status": "not_ready", "checks": {"database": false}}` |
+
 ---
 
 ## RabbitMQ Consumption Contract

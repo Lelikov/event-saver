@@ -77,6 +77,8 @@ async def health() -> dict[str, str]:
 @app.get("/ready")
 async def ready() -> JSONResponse:
     """Readiness probe: verifies database connectivity."""
-    if not await _check_database():
-        return JSONResponse(status_code=503, content={"status": "unavailable"})
-    return JSONResponse(status_code=200, content={"status": "ready"})
+    database_ok = await _check_database()
+    checks = {"database": database_ok}
+    if not database_ok:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+    return JSONResponse(status_code=200, content={"status": "ready", "checks": checks})
