@@ -7,10 +7,11 @@ import structlog
 from dishka import make_async_container
 from dishka.integrations.fastapi import FastapiProvider, setup_dishka
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from event_saver import metrics
 from event_saver.config import Settings
 from event_saver.interfaces.backfill import IUserIdBackfillRunner
 from event_saver.interfaces.consumer import IEventConsumerRunner
@@ -72,6 +73,12 @@ async def _check_database() -> bool:
 async def health() -> dict[str, str]:
     """Liveness probe: the process is up and serving HTTP."""
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+async def metrics_endpoint() -> Response:
+    """Prometheus exposition endpoint (consumer RED + business counters)."""
+    return metrics.metrics_response()
 
 
 @app.get("/ready")

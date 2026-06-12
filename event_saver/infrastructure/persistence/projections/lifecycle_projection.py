@@ -7,6 +7,7 @@ from typing import Any
 from event_schemas.envelope import unwrap_payload
 from event_schemas.types import EventType
 
+from event_saver import metrics
 from event_saver.domain.models.event import ParsedEvent
 from event_saver.infrastructure.persistence.projections.base import BaseProjection
 
@@ -50,6 +51,7 @@ class LifecycleProjection(BaseProjection):
             return None
 
         details = self._extract_details(event)
+        metrics.BOOKING_LIFECYCLE_TOTAL.labels(action=action).inc()
 
         return (
             """

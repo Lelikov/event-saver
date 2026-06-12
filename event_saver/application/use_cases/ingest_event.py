@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 from event_schemas.types import EventType
 
+from event_saver import metrics
 from event_saver.application.services.projection_executor import ProjectionExecutor
 from event_saver.domain.services import BookingDataExtractor, EventParser, ParticipantExtractor
 from event_saver.interfaces.repositories import IBookingRepository, IEventRepository
@@ -73,6 +74,7 @@ class IngestEventUseCase:
             )
             return
 
+        metrics.EVENTS_TOTAL.labels(event_type=str(event.event_type)).inc()
         logger.info(
             "Raw event saved",
             event_id=event.event_id,

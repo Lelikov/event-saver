@@ -286,6 +286,7 @@ When adding new features:
 - `main.py` - Application entry point, lifespan management
 - `config.py` - Settings (Pydantic)
 - `ioc.py` - **DI container with clean architecture**
+- `metrics.py` - Prometheus metrics: consumer RED (`messages_processed_total{queue,event_type,outcome}`, `message_processing_seconds{queue}`), `saver_events_total{event_type}`, `saver_booking_lifecycle_total{action}`; exposed at `GET /metrics` on the health HTTP app
 
 ### Domain Layer (Business Logic)
 - `domain/models/` - Immutable value objects

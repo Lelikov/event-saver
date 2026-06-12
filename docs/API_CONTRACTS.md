@@ -4,12 +4,25 @@
 
 **event-saver exposes no public HTTP API.** All processing is driven by RabbitMQ message consumption. There are no HTTP endpoints for event ingestion, querying, or proxying.
 
-The only HTTP endpoints are health probes (`main.py`):
+The only HTTP endpoints are health probes and metrics (`main.py`):
 
 | Endpoint | Probe | Behaviour |
 |---|---|---|
 | `GET /health` | Liveness (k8s `livenessProbe`) | Always `200 {"status": "ok"}`; no dependency calls |
 | `GET /ready` | Readiness (k8s `readinessProbe`) | `SELECT 1` against PostgreSQL; `200 {"status": "ready", "checks": {"database": true}}` or `503 {"status": "not_ready", "checks": {"database": false}}` |
+| `GET /metrics` | Prometheus scrape | `prometheus_client.generate_latest`; `200`, `text/plain; version=0.0.4` |
+
+### Exposed metrics (`metrics.py`)
+
+| Metric | Type | Labels |
+|---|---|---|
+| `messages_processed_total` | counter | `queue`, `event_type` (`unknown` for unparseable messages), `outcome` (ok/retried/rejected) |
+| `message_processing_seconds` | histogram | `queue` |
+| `saver_events_total` | counter | `event_type` — raw events persisted (duplicates excluded) |
+| `saver_booking_lifecycle_total` | counter | `action` (created/rescheduled/reassigned/cancelled/rejected/client_reassigned) |
+
+Outcome mapping: `ok` = saved; `retried` = transient retries exhausted, NACK + requeue;
+`rejected` = poison message dead-lettered (parse failure or non-transient save error).
 
 ---
 

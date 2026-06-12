@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+from time import perf_counter
 from typing import Any
 
 import structlog
@@ -12,6 +13,7 @@ from faststream.rabbit import ExchangeType, RabbitBroker, RabbitExchange, Rabbit
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as SqlTimeoutError
 
+from event_saver import metrics
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.interfaces.event_store import IEventStore
 
@@ -123,9 +125,11 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
         logger.info("Rabbit consumer runner stopped")
 
     async def _consume_message(self, *, message: Any, queue_name: str) -> None:
+        started_at = perf_counter()
         try:
             event = from_http(headers=message.headers, data=message.body)
         except Exception as exc:
+            metrics.record_message(queue=queue_name, event_type="unknown", outcome="rejected", started_at=started_at)
             logger.exception(
                 "Failed to parse CloudEvent from message: poison, dead-lettering",
                 queue=queue_name,
@@ -165,11 +169,18 @@ class RabbitEventConsumerRunner(IEventConsumerRunner):
                 span_id=span_id,
                 dataschema=dataschema,
             )
+        except NackMessage:
+            metrics.record_message(queue=queue_name, event_type=event_type, outcome="retried", started_at=started_at)
+            raise
+        except RejectMessage:
+            metrics.record_message(queue=queue_name, event_type=event_type, outcome="rejected", started_at=started_at)
+            raise
         finally:
             # Clear context after processing
             if trace_id:
                 structlog.contextvars.clear_contextvars()
 
+        metrics.record_message(queue=queue_name, event_type=event_type, outcome="ok", started_at=started_at)
         logger.info(
             "Event consumed and saved",
             queue=queue_name,
