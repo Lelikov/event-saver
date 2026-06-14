@@ -155,6 +155,10 @@ the loop survives. Components: `application/services/user_id_backfill.py`
 - **Poison messages** (parse/validation errors): rejected to `<queue>.dlq` on `events.dlx`
 - **Graceful shutdown**: `RABBIT_GRACEFUL_TIMEOUT` (default 30s) drains in-flight handlers
 
+## Tracing
+
+OpenTelemetry auto-instrumentation (FastAPI, asyncpg, RabbitMQ via FastStream middleware) + manual span `saver.projection_execute` (attribute: projection name); exported via OTLP/gRPC to the collector → Tempo; gated by `OTEL_SDK_DISABLED` (off by default). W3C `traceparent` is extracted from inbound RabbitMQ messages, continuing the trace started by event-receiver.
+
 ## Known Limitations
 
 See `docs/AUDIT.md` (audit-v2, 2026-06-11) — all findings resolved. Remaining
