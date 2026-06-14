@@ -1,5 +1,9 @@
 """Shared test fixtures for event-saver."""
 
+import os
+
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 import uuid
 from datetime import UTC, datetime
 

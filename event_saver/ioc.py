@@ -47,6 +47,9 @@ from event_saver.interfaces.sql import ISqlExecutor, ISqlExecutorFactory
 from event_saver.interfaces.user_resolver import IUserResolver
 
 
+from event_saver.telemetry import rabbit_telemetry_middlewares
+
+
 logger = structlog.get_logger(__name__)
 
 
@@ -60,6 +63,7 @@ def build_rabbit_router(settings: Settings) -> fastapi.RabbitRouter:
         str(settings.rabbit_url),
         default_channel=Channel(prefetch_count=settings.rabbit_prefetch_count),
         graceful_timeout=settings.rabbit_graceful_timeout,
+        middlewares=[*rabbit_telemetry_middlewares()],
     )
 
 

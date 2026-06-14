@@ -17,6 +17,7 @@ from event_saver.interfaces.backfill import IUserIdBackfillRunner
 from event_saver.interfaces.consumer import IEventConsumerRunner
 from event_saver.ioc import AppProvider
 from event_saver.logger import setup_logger
+from event_saver.telemetry import instrument_asyncpg, instrument_fastapi, setup_tracing
 
 
 container = make_async_container(AppProvider(), FastapiProvider())
@@ -54,6 +55,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="event-saver", version="0.1.0", lifespan=lifespan)
+setup_tracing()
+instrument_fastapi(app)
+instrument_asyncpg()
 setup_dishka(container=container, app=app)
 
 
