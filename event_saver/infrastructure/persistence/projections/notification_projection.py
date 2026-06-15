@@ -71,8 +71,7 @@ class EmailNotificationProjection(BaseProjection):
         if not isinstance(job_id, str):
             return None
 
-        users = original.get("users")
-        role = users[0].get("role") if isinstance(users, list) and users else None
+        role = original.get("recipient_role")
         trigger_event = original.get("trigger_event")
         email = original.get("email")
 
@@ -205,18 +204,19 @@ class TelegramNotificationProjection(BaseProjection):
         queue_name: str,
     ) -> tuple[str, dict[str, Any]] | None:
         original = event.payload.get("original", event.payload)
-        users = original.get("users")
-        role = users[0].get("role") if isinstance(users, list) and users else None
+        role = original.get("recipient_role")
         trigger_event = original.get("trigger_event")
         email = original.get("email")
 
+        # Notification delivery-result events do not carry normalized.participants,
+        # so organizer_user_id/client_user_id are None here and user_id may stay
+        # NULL — still record the notification (keyed by recipient_email + role),
+        # matching the email projection. Otherwise telegram rows are never created.
         user_id = _user_id_for_role(
             role=role,
             organizer_user_id=organizer_user_id,
             client_user_id=client_user_id,
         )
-        if user_id is None:
-            return None
 
         return (
             """

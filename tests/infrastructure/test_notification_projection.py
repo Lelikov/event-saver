@@ -50,7 +50,7 @@ class TestEmailNotificationProjection:
             {
                 "original": {
                     "job_id": "job-1",
-                    "users": [{"role": "organizer", "email": "org@example.com"}],
+                    "recipient_role": "organizer",
                     "trigger_event": "booking.created",
                     "email": "org@example.com",
                 },
@@ -71,7 +71,7 @@ class TestEmailNotificationProjection:
         projection = EmailNotificationProjection()
         event = _make_event(
             "notification.email.message_sent",
-            {"original": {"job_id": "job-1", "users": [{"role": "previous_organizer"}]}},
+            {"original": {"job_id": "job-1", "recipient_role": "previous_organizer"}},
         )
 
         result = await projection.handle(event=event, **_handle_kwargs(client_user_id=uuid.uuid4()))
@@ -123,7 +123,7 @@ class TestTelegramNotificationProjection:
             "notification.telegram.message_sent",
             {
                 "original": {
-                    "users": [{"role": "client"}],
+                    "recipient_role": "client",
                     "trigger_event": "booking.created",
                     "email": "client@example.com",
                 },
@@ -138,17 +138,23 @@ class TestTelegramNotificationProjection:
         assert params["user_id"] == str(client)
 
     @pytest.mark.anyio
-    async def test_unknown_role_returns_none(self) -> None:
-        """Telegram rows must not be attributed to the client when the role is unknown."""
+    async def test_unresolved_role_records_with_null_user_id(self) -> None:
+        """Record telegram delivery with a NULL user_id when the role is unresolved.
+
+        Delivery-result events carry no participants, so user_id may be unresolved;
+        the notification is still recorded (not dropped) and never misattributed.
+        """
         projection = TelegramNotificationProjection()
         event = _make_event(
             "notification.telegram.message_sent",
-            {"original": {"users": [{"role": "previous_organizer"}]}},
+            {"original": {"recipient_role": "previous_organizer"}},
         )
 
         result = await projection.handle(event=event, **_handle_kwargs(client_user_id=uuid.uuid4()))
 
-        assert result is None
+        assert result is not None
+        _sql, params = result
+        assert params["user_id"] is None
 
 
 class TestEmailStatusHistoryProjection:
