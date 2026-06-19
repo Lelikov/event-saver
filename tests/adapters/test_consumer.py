@@ -76,6 +76,36 @@ class TestConsumeSuccess:
         assert call["trace_id"] == "trace-1"
 
 
+class TestUserSyncedMessage:
+    @pytest.mark.anyio
+    async def test_saves_user_synced_event_without_booking_id(self) -> None:
+        store = FakeEventStore()
+        runner = _runner(store)
+        headers = {
+            "ce-specversion": "1.0",
+            "ce-id": "evt-002",
+            "ce-type": "user.synced",
+            "ce-source": "event-users",
+            "ce-time": "2026-01-15T10:00:00+00:00",
+            "content-type": "application/json",
+        }
+        body = json.dumps(
+            {
+                "original": {"email": "c@ex.com", "role": "client", "user_id": "00000000-0000-0000-0000-000000000001"},
+                "normalized": {"participants": []},
+            },
+        ).encode()
+        message = FakeMessage(headers=headers, body=body)
+
+        await runner._consume_message(message=message, queue_name="events.user.synced")  # noqa: SLF001
+
+        assert len(store.calls) == 1
+        call = store.calls[0]
+        assert call["event_type"] == "user.synced"
+        assert call["queue_name"] == "events.user.synced"
+        assert call["booking_id"] is None
+
+
 class TestTransientRetry:
     @pytest.mark.anyio
     async def test_retries_transient_error_then_succeeds(self) -> None:

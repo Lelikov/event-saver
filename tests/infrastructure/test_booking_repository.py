@@ -142,3 +142,40 @@ class TestUpdateClient:
         query, params = sql.queries[0]
         assert "update bookings" in query
         assert params == {"booking_ref_id": 42, "client_user_id": str(client)}
+
+
+class TestBackfillUserIdByEmail:
+    @pytest.mark.anyio
+    async def test_updates_client_column(self) -> None:
+        sql = FakeSqlExecutor()
+        repo = BookingRepository(sql)
+        user_id = uuid.uuid4()
+
+        await repo.backfill_user_id_by_email(email="c@ex.com", role="client", user_id=user_id)
+
+        query, values = sql.queries[-1]
+        assert "client_user_id = :user_id" in query
+        assert "client_user_id IS NULL" in query
+        assert values["email"] == "c@ex.com"
+        assert values["role"] == "client"
+        assert values["user_id"] == user_id
+
+    @pytest.mark.anyio
+    async def test_updates_organizer_column(self) -> None:
+        sql = FakeSqlExecutor()
+        repo = BookingRepository(sql)
+
+        await repo.backfill_user_id_by_email(email="o@ex.com", role="organizer", user_id=uuid.uuid4())
+
+        query, _ = sql.queries[-1]
+        assert "organizer_user_id = :user_id" in query
+        assert "organizer_user_id IS NULL" in query
+
+    @pytest.mark.anyio
+    async def test_unknown_role_is_a_noop(self) -> None:
+        sql = FakeSqlExecutor()
+        repo = BookingRepository(sql)
+
+        await repo.backfill_user_id_by_email(email="x@ex.com", role="bogus", user_id=uuid.uuid4())
+
+        assert sql.queries == []

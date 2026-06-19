@@ -9,6 +9,25 @@ from event_saver.domain.models.booking import BookingData
 from event_saver.interfaces.sql import ISqlExecutor
 
 
+_ROLE_COLUMNS = {"organizer": "organizer_user_id", "client": "client_user_id"}
+
+_BACKFILL_BY_EMAIL = """
+UPDATE bookings b
+SET {column} = :user_id, updated_at = now()
+WHERE b.{column} IS NULL
+  AND EXISTS (
+    SELECT 1 FROM events e
+    CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(e.payload->'normalized'->'participants') = 'array'
+             THEN e.payload->'normalized'->'participants' ELSE '[]'::jsonb END
+    ) AS p
+    WHERE e.booking_id = b.booking_uid
+      AND p->>'role' = :role
+      AND lower(COALESCE(p->>'email', '')) = lower(:email)
+  )
+"""
+
+
 class BookingRepository:
     """Repository for bookings table."""
 
@@ -116,6 +135,21 @@ class BookingRepository:
             where id = :booking_ref_id
             """,
             {"booking_ref_id": booking_ref_id, "client_user_id": str(client_user_id)},
+        )
+
+    async def backfill_user_id_by_email(self, email: str, role: str, user_id: uuid.UUID) -> None:
+        """Backfill organizer/client UUID on bookings matched by participant email.
+
+        NULL-guarded (never overwrites a resolved id) and idempotent on redelivery.
+        ``column`` comes only from the fixed ``_ROLE_COLUMNS`` allowlist (never event
+        data), so the ``.format()`` is injection-safe.
+        """
+        column = _ROLE_COLUMNS.get(role)
+        if column is None:
+            return
+        await self._sql.execute(
+            _BACKFILL_BY_EMAIL.format(column=column),
+            {"user_id": user_id, "role": role, "email": email},
         )
 
     async def save_organizer_history(

@@ -82,6 +82,15 @@ class IngestEventUseCase:
             booking_id=event.booking_id,
         )
 
+        if event.event_type == EventType.USER_SYNCED:
+            original = event.payload.get("original", {})
+            await self._booking_repository.backfill_user_id_by_email(
+                email=original["email"],
+                role=original["role"],
+                user_id=uuid.UUID(original["user_id"]),
+            )
+            return
+
         if not event.booking_id:
             return
 

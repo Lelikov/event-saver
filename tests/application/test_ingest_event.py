@@ -30,6 +30,7 @@ class FakeBookingRepository:
         self.upserts: list[dict[str, Any]] = []
         self.organizer_history: list[dict[str, Any]] = []
         self.client_updates: list[dict[str, Any]] = []
+        self.backfill_calls: list[tuple[str, str, uuid.UUID]] = []
 
     async def get_or_none(self, *, booking_id: str, queue_name: str) -> int | None:  # noqa: ARG002
         if queue_name == _LIFECYCLE_QUEUE:
@@ -59,6 +60,9 @@ class FakeBookingRepository:
 
     async def save_organizer_history(self, **kwargs: Any) -> None:
         self.organizer_history.append(kwargs)
+
+    async def backfill_user_id_by_email(self, email: str, role: str, user_id: uuid.UUID) -> None:
+        self.backfill_calls.append((email, role, user_id))
 
 
 class FakeProjectionExecutor:
@@ -202,3 +206,35 @@ class TestClientReassigned:
         await _use_case(event_repo, booking_repo, projections).execute(**kwargs)
 
         assert booking_repo.client_updates == []
+
+
+class TestUserSynced:
+    @pytest.mark.anyio
+    async def test_backfills_user_id_by_email_and_skips_booking_flow(self) -> None:
+        user_id = str(uuid.uuid4())
+        event_repo = FakeEventRepository()
+        booking_repo = FakeBookingRepository()
+        projections = FakeProjectionExecutor()
+
+        await _use_case(event_repo, booking_repo, projections).execute(
+            **_execute_kwargs(
+                queue_name="events.user.synced",
+                event_type="user.synced",
+                source="event-users",
+                booking_id=None,
+                data={
+                    "original": {
+                        "email": "c@ex.com",
+                        "role": "client",
+                        "user_id": user_id,
+                        "time_zone": "UTC",
+                    },
+                    "normalized": {"participants": []},
+                },
+            ),
+        )
+
+        assert booking_repo.backfill_calls == [("c@ex.com", "client", uuid.UUID(user_id))]
+        assert booking_repo.upserts == []
+        assert projections.calls == []
+        assert len(event_repo.saved_events) == 1

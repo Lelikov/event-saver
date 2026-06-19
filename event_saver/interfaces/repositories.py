@@ -32,6 +32,8 @@ class IBookingRepository(Protocol):
         client_user_id: uuid.UUID,
     ) -> None: ...
 
+    async def backfill_user_id_by_email(self, email: str, role: str, user_id: uuid.UUID) -> None: ...
+
     async def save_organizer_history(
         self,
         *,
