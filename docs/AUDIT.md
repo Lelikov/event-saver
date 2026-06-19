@@ -103,6 +103,17 @@ and `db/models.py` drift. Suite: 100 tests. Commits `0d10102`..`04a0bf9`.
   identities resolve via event-users `GET /api/users/by-identity`; transport
   errors skip the cycle. See SERVICE_OVERVIEW.md § Background Tasks.
 
+- **Event-driven user_id backfill via `user.synced` (added with event-db-sync):**
+  event-saver now consumes `user.synced` on the new saver-owned `events.user.synced`
+  queue and backfills `bookings.organizer_user_id` / `bookings.client_user_id` by
+  matching the participant email (join through
+  `events.payload->'normalized'->'participants'`), NULL-guarded and idempotent. The
+  event flows from `event-db-sync` (`user.upserted`, trigger-driven from the cal.com DB)
+  → `event-users` (upsert + `user.synced`, both published directly to RabbitMQ). This is
+  the fast path; the HTTP-poll `UserIdBackfillService` follow-up #9 above remains as a
+  slow safety net. See QUEUES_DIGEST.md § events.user.synced and
+  `../../docs/architecture/MESSAGE_CONTRACTS.md`.
+
 ---
 
 ## Accepted / documented decisions

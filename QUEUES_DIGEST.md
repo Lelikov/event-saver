@@ -14,6 +14,7 @@
 | `events.jitsi` | `jitsi*` | `*` | все Jitsi-события |
 | `events.mail` | `unisender-go` | `unisender.status.created` | события UniSender |
 | `events.chat` | `getstream` | `getstream.*` | события GetStream |
+| `events.user.synced` | `event-users` | `user.synced` | бэкфилл `bookings.{organizer,client}_user_id` по email |
 | `events.unrouted` | fallback | fallback | все события без match по rules |
 
 ## events.booking.lifecycle.saver
@@ -69,6 +70,21 @@
 - `source_pattern = "getstream"`
 - `type_pattern = "getstream.*"`
 
+## events.user.synced
+
+Новая saver-owned очередь user-sync (см. `event_schemas.queues`, routing key `events.user.synced`):
+- `source_pattern = "event-users"`, `type_pattern = "user.synced"`
+- Продюсер — `event-users`, публикует `user.synced` **напрямую в RabbitMQ** (priority CRITICAL)
+  после upsert пользователя из `user.upserted` (источник — `event-db-sync`); событие НЕ проходит
+  через event-receiver.
+- Payload (`UserSyncedPayload`) несёт разрешённый `user_id`, `email`, `role`, `time_zone`.
+
+Поведение event-saver: бэкфиллит `bookings.organizer_user_id` / `bookings.client_user_id`,
+матча участника по email (join через `events.payload->'normalized'->'participants'`).
+NULL-guarded и идемпотентно (повторная доставка не перетирает уже проставленные значения).
+Это событийный (event-driven) бэкфилл, дополняющий медленный HTTP-poll
+`UserIdBackfillService` (`adapters/backfill_runner.py`), который остаётся подстраховкой.
+
 ## events.unrouted
 
 Fallback-очередь по умолчанию:
@@ -82,6 +98,11 @@ Fallback-очередь по умолчанию:
 `notification.*.message_sent` попадают в `events.notification.delivery` и
 сохраняются. Если понадобится аудит команд — добавить отдельные очереди
 saver-а, привязанные к тем же routing key (см. docs/AUDIT.md).
+
+Примечание: `user.synced` (`events.user.synced`) — это факт (пользователь
+синхронизирован, `user_id` разрешён), поэтому event-saver его консьюмит для
+бэкфилла. Сам `user.upserted` (`events.user.email`) — команда апсерта,
+адресованная event-users, и event-saver его не слушает.
 
 ---
 
